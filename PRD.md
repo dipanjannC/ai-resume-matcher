@@ -1,31 +1,52 @@
-# Technical design (easy-to-build option) — Resume Matching Platform
+# Technical design (easy-to-build option) — AI-Powered Resume Matching Platform
 
-Great — you want a practical, **easy-to-build technical design** for the resume-matching platform (the one-day / MVP-friendly route). Below I give a clear, minimal architecture that you can implement quickly, the rationale for why it’s easiest, concrete component choices, APIs, data flow, security, testing/acceptance criteria, and a compact implementation plan with estimated effort for a small team.
+This is a practical, **AI-enhanced technical design** for an intelligent resume-matching platform that leverages **LangChain for structured data extraction** from unstructured CVs. The design uses LLMs with system and role prompts to extract structured information and match candidates effectively.
+
+## Final recommendation
+
+Use the **Monolith MVP (FastAPI + LangChain + Sentence-Transformers + ChromaDB + Postgres + S3)**. It minimizes moving parts, uses a single language, relies on off-the-shelf components, and gives immediate, explainable results. **LangChain** provides intelligent data extraction from unstructured resumes using LLM-powered prompts. ChromaDB provides a persistent vector database with built-in metadata storage, simplifying the architecture. It's the fastest path from zero → demoable prototype with a clean path to production hardening.hnical design (easy-to-build option) — Resume Matching Platform
+
+Great — you want a practical, **easy-to-build technical design** for the resume-matching platform (the one-day / MVP-friendly route). Below I give a # 13 — Final recommendation (which is easiest)
+
+Use the **Monolith MVP (FastAPI + Sentence-Transformers + ChromaDB + Postgres + S3)**. It minimizes moving parts, uses a single language, relies on off-the-shelf components, and gives immediate, explainable results. ChromaDB provides a persistent vector database with built-in metadata storage, simplifying the architecture. It's the fastest path from zero → demoable prototype with a clean path to production hardening.ar, minimal architecture that you can implement quickly, the rationale for why it’s easiest, concrete component choices, APIs, data flow, security, testing/acceptance criteria, and a compact implementation plan with estimated effort for a small team.
 
 ---
 
 # 1 — Recommendation (single-sentence)
 
-Build a **single FastAPI Python service + FAISS local vector index + Sentence-Transformers embeddings + simple parser** with S3 for storage and PostgreSQL for metadata. This monolithic-but-modular approach is fastest to implement and easiest to demo, yet productionizable later.
+Build a **single FastAPI Python service + LangChain + ChromaDB vector database + Sentence-Transformers embeddings + intelligent resume parser** with S3 for storage and PostgreSQL for metadata. This monolithic-but-modular approach uses **LangChain system prompts** for structured data extraction from unstructured CVs, making it fastest to implement while providing intelligent resume parsing.
 
 Why easiest:
 
 * Everything is Python — one language and environment.
+* **LangChain** provides structured data extraction using LLM prompts (no manual parsing rules).
 * Uses pre-trained models (no training required).
-* FAISS is simple to run locally for MVP (no external DB).
+* ChromaDB provides a simple, persistent vector database with built-in metadata storage.
 * Minimal infra: single VM or managed app (GCP App Engine / AWS EC2 / Heroku).
 * Clear upgrade path to managed vector DBs, microservices, or Kubernetes later.
 
 ---
 
-# 2 — High-level architecture (MVP)
+# 2 — High-level architecture (MVP with LangChain)
 
-```
+```ascii
 [Upload UI / ATS Connector] --> [API (FastAPI)] --> 
-  ├─ Resume Parser (spaCy / PyPDF2 / docx2txt) → raw_text
+  ├─ LangChain Resume Parser (LLM + System Prompts) → structured_data
   ├─ Embedding Service (sentence-transformers) → vector
   ├─ Metadata DB (Postgres) ← store candidate metadata
-  └─ Vector Index (FAISS) ← store vectors + id mapping
+  └─ Vector DB (ChromaDB) ← store vectors + metadata
+
+LangChain Extraction Pipeline:
+Resume Text → [System Prompt + Role Prompt] → LLM → Structured Output:
+{
+  "profile": { "name": "...", "email": "...", "phone": "..." },
+  "experience": { "years": 5, "positions": [...] },
+  "skills": { "technical": [...], "soft": [...] },
+  "topics": { "domains": [...], "specializations": [...] },
+  "tools_libraries": { "languages": [...], "frameworks": [...], "tools": [...] },
+  "summary": "Professional summary extracted from CV"
+}
+
 API serves: /upload, /match, /explain, /audit
 Storage: S3 (resumes, precomputed artifacts)
 Monitoring: Prometheus + Grafana (optional)
@@ -34,39 +55,58 @@ Logging: ELK or cloud logs
 
 ---
 
-# 3 — Component choices (MVP, easiest to implement)
+# 3 — Component choices (MVP, LangChain-enhanced)
 
 * **API layer**: Python + FastAPI (simple async, auto docs via Swagger).
-* **Resume parsing**: `PyPDF2` + `python-docx` (or `docx2txt`) + simple spaCy pipeline for entities.
+* **AI-Powered Parsing**: **LangChain** with OpenAI/Anthropic/Local LLM for structured extraction using system and role prompts.
+* **Resume parsing (fallback)**: `PyPDF2` + `python-docx` + spaCy for text extraction.
 * **Embeddings**: `sentence-transformers` (model: `all-MiniLM-L6-v2` for speed) — no training.
-* **Vector store**: FAISS (IndexFlatIP or IndexFlatL2). For >100k vectors later, upgrade to Milvus/Pinecone/Weaviate.
-* **Metadata DB**: PostgreSQL with JSONB columns for resume fields.
+* **Vector store**: ChromaDB (persistent, embeddable vector database with metadata storage). Scalable and easy to implement.
+* **Metadata DB**: PostgreSQL with JSONB columns for structured resume data and user management.
 * **Storage**: S3-compatible (AWS S3, GCS, or MinIO for local).
-* **Explainability**: Rule-based reasons (skill overlap + semantic contribution) + optional SHAP on small interpretable model later.
-* **Bias checks**: Rule-based audits and statistical checks (distribution of top-k by simulated/available demographics). Use `fairlearn` later if needed.
+* **LLM Integration**: LangChain + OpenAI API (or Ollama for local LLMs).
+* **Explainability**: Rule-based reasons (skill overlap + semantic contribution) + LangChain reasoning chains.
+* **Bias checks**: Rule-based audits and statistical checks (distribution of top-k by simulated/available demographics).
 * **Authentication**: API keys / OAuth for ATS integration.
 * **Hosting (fastest)**: Single cloud VM or PaaS (Heroku / GCP App Engine). Use Docker for portability.
 
 ---
 
-# 4 — Data model (simplified)
+# 4 — Data model (LangChain-enhanced structured data)
 
 Postgres table `candidates`:
 
 * `candidate_id` (uuid)
-* `name` (nullable)
-* `filename`
-* `parsed_text` (text)
-* `skills` (jsonb list)
-* `experience_years` (int/nullable)
-* `created_at`
-* `s3_path` (resume file)
-* `metadata` (jsonb)
+* `profile` (jsonb) - `{ "name": "...", "email": "...", "phone": "...", "location": "..." }`
+* `experience` (jsonb) - `{ "years": 5, "positions": [...], "companies": [...] }`
+* `skills` (jsonb) - `{ "technical": [...], "soft": [...], "certifications": [...] }`
+* `topics` (jsonb) - `{ "domains": [...], "specializations": [...], "industries": [...] }`
+* `tools_libraries` (jsonb) - `{ "languages": [...], "frameworks": [...], "tools": [...], "databases": [...] }`
+* `summary` (text) - AI-extracted professional summary
+* `filename` (varchar)
+* `parsed_text` (text) - raw extracted text
+* `created_at` (timestamp)
+* `updated_at` (timestamp)
+* `s3_path` (varchar) - resume file location
+* `extraction_metadata` (jsonb) - LangChain processing metadata
 
-FAISS index:
+ChromaDB collection:
 
-* vector index of embeddings
-* mapping: FAISS index id ↔ `candidate_id` (store mapping in Postgres or separate `meta.json`)
+* `embeddings`: vector embeddings of resume content and summary
+* `documents`: processed text combining summary + key skills + experience
+* `metadatas`: structured data from LangChain extraction (candidate_id, experience_years, top_skills, etc.)
+* `ids`: unique identifiers matching candidate_id in PostgreSQL
+
+Job Requirements table `job_requirements`:
+
+* `job_id` (uuid)
+* `title` (varchar)
+* `description` (text)
+* `required_experience` (jsonb) - `{ "years": 3, "roles": [...] }`
+* `required_skills` (jsonb) - `{ "technical": [...], "soft": [...] }`
+* `preferred_topics` (jsonb) - `{ "domains": [...], "specializations": [...] }`
+* `required_tools` (jsonb) - `{ "languages": [...], "frameworks": [...], "tools": [...] }`
+* `created_at` (timestamp)
 
 ---
 
@@ -183,7 +223,7 @@ Total MVP time: \~7–9 hours (one focused day for one developer; faster with tw
 
 If/when you outgrow MVP:
 
-* Replace FAISS with Milvus/Pinecone/Weaviate for horizontal scale and persistence.
+* Scale ChromaDB with distributed deployment or consider migrating to Milvus/Pinecone/Weaviate for larger-scale production needs.
 * Move embedding service to an async microservice or serverless with caching.
 * Introduce retraining/fine-tuning or use a larger embedding model where accuracy requires it.
 * Add SHAP/Model Cards + richer XAI for compliance teams.
@@ -204,10 +244,10 @@ Acceptance tests:
 
 # 12 — Checklist to start coding (copy-paste)
 
-* [ ] Create repo + venv + `requirements.txt` (fastapi, uvicorn, sentence-transformers, faiss-cpu, psycopg2-binary or sqlite for demo, spacy, PyPDF2, python-docx)
+* [ ] Create repo + venv + `requirements.txt` (fastapi, uvicorn, sentence-transformers, chromadb, psycopg2-binary or sqlite for demo, spacy, PyPDF2, python-docx)
 * [ ] Implement parser script + `/upload` endpoint
 * [ ] Add `embeddings.py` wrapper using `sentence-transformers`
-* [ ] Build FAISS index + `index.save()` + `index.load()`
+* [ ] Set up ChromaDB collection + persistence
 * [ ] Implement `/match` endpoint with scoring + explain function
 * [ ] Add basic logging + `/audit` endpoint
 * [ ] Create `scripts/demo_upload.py` and sample resumes
@@ -221,9 +261,63 @@ Use the **Monolith MVP (FastAPI + Sentence-Transformers + FAISS + Postgres + S3)
 
 ---
 
-If you want, I can now:
+# 14 — Folder structure
 
-* produce a **detailed file-level scaffold** (file names + starter code for each file), or
-* generate a **30–60 minute developer runbook** with exact shell commands and copy-paste-ready files to implement the MVP.
+```ascii
+ai-resume-matcher/
+├── .github/
+│   └── workflows/              # CI/CD workflows
+├── app/
+│   ├── api/                    # API routes 
+│   │   ├── __init__.py
+│   │   ├── candidates.py       # Candidate routes
+│   │   ├── jobs.py             # Job routes
+│   │   ├── matching.py         # Matching routes
+│   │   └── auth.py             # Authentication routes
+│   ├── core/                   # Core application code
+│   │   ├── __init__.py
+│   │   ├── config.py           # Configuration settings
+│   │   ├── security.py         # Security utilities
+│   │   └── exceptions.py       # Custom exceptions
+│   ├── db/                     # Database related code
+│   │   ├── __init__.py
+│   │   ├── models.py           # SQLAlchemy models
+│   │   └── session.py          # Database session management
+│   ├── services/               # Business logic services
+│   │   ├── __init__.py
+│   │   ├── parser.py           # Resume parsing logic
+│   │   ├── embeddings.py       # Embedding generation service
+│   │   ├── vector_store.py     # ChromaDB integration
+│   │   ├── matcher.py          # Matching algorithm
+│   │   └── explainer.py        # Explanation generation
+│   ├── schemas/                # Pydantic models for validation
+│   │   ├── __init__.py
+│   │   ├── candidates.py
+│   │   ├── jobs.py
+│   │   └── matching.py
+│   └── main.py                 # FastAPI application entry point
+├── tests/                      # Unit and integration tests
+│   ├── __init__.py
+│   ├── conftest.py             # Test fixtures
+│   ├── test_parser.py
+│   ├── test_embeddings.py
+│   └── test_matcher.py
+├── scripts/                    # Utility scripts
+│   ├── demo_upload.py          # Demo script for uploading resumes
+│   └── generate_sample_data.py # Generate sample data
+├── data/                       # Data storage
+│   ├── resumes/                # Sample resumes for testing
+│   ├── vectordb/               # ChromaDB persistent storage
+│   └── logs/                   # Application logs
+├── docs/                       # Documentation
+│   ├── api/                    # API documentation
+│   └── setup/                  # Setup instructions
+├── .env.example                # Example environment variables
+├── .gitignore                  # Git ignore file
+├── Dockerfile                  # Docker configuration
+├── docker-compose.yml          # Docker compose configuration
+├── requirements.txt            # Python dependencies
+└── README.md                   # Project documentation
+```
 
-Which one should I generate next?
+This folder structure follows best practices for Python applications and provides a clean separation of concerns. The modular design allows for easy extension and maintenance as the project grows.
