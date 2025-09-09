@@ -165,6 +165,7 @@ class ResumeMatcherDemo:
             console=console
         ) as progress:
             task1 = progress.add_task("🔄 Analyzing job description...", total=None)
+            task2 = None
             
             try:
                 job_data = await self.processor.process_job_description(job_text, job_title, company)
@@ -180,7 +181,7 @@ class ResumeMatcherDemo:
                 
             except Exception as e:
                 progress.remove_task(task1)
-                if 'task2' in locals():
+                if task2 is not None:
                     progress.remove_task(task2)
                 console.print(f"❌ Error during matching: {str(e)}")
     

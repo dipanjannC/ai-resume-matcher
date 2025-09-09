@@ -32,7 +32,8 @@ class LangChainAgents:
     
     def __init__(self, openai_api_key: Optional[str] = None):
         """Initialize LangChain agents with OpenAI model"""
-        self.llm = LLMService().get_openai()  # Use OpenAI instead of Mistral
+        # Initialize LLM service - use Groq since we have the API key
+        self.llm = LLMService().get_groq()  # Use Groq instead of OpenAI
         
         # Initialize parsers
         self.resume_parser = PydanticOutputParser(pydantic_object=ResumeParsingOutput)

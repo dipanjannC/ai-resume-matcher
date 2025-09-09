@@ -37,8 +37,8 @@ async def upload_resume(
         # Validate file
         if not file.filename:
             raise HTTPException(400, "No filename provided")
-            
-        if not validate_file_type(file.filename, settings.ALLOWED_FILE_TYPES):
+
+        if not validate_file_type(file.filename, settings.ALLOWED_FILE_TYPES.split(",")):
             raise HTTPException(400, f"Unsupported file type. Allowed: {settings.ALLOWED_FILE_TYPES}")
         
         content = await file.read()

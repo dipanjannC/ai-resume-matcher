@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     
     # File Processing
     MAX_FILE_SIZE_MB: int = 10
-    ALLOWED_FILE_TYPES: List[str] = ["pdf", "docx", "txt"]
+    ALLOWED_FILE_TYPES: str = "pdf,docx,txt"  # Change to string, parsed below
     TEMP_DIR: str = "./data/temp"
     
     # Data Storage (file-based, no database)
@@ -44,8 +44,13 @@ class Settings(BaseSettings):
     @field_validator("ALLOWED_FILE_TYPES", mode="before")
     def parse_allowed_file_types(cls, v):
         if isinstance(v, str):
-            return [x.strip() for x in v.split(",")]
+            return v  # Keep as string for now
         return v
+    
+    @property
+    def allowed_file_types_list(self) -> List[str]:
+        """Get ALLOWED_FILE_TYPES as a list"""
+        return [x.strip() for x in self.ALLOWED_FILE_TYPES.split(",")]
     
     def ensure_directories(self):
         """Create necessary directories if they don't exist"""
@@ -73,12 +78,3 @@ settings = Settings()
 
 # Ensure directories exist
 settings.ensure_directories()
-
-
-# Create settings instance
-settings = Settings()
-
-# Ensure data directories exist
-Path(settings.CHROMADB_PERSIST_DIRECTORY).mkdir(parents=True, exist_ok=True)
-Path("./data/resumes").mkdir(parents=True, exist_ok=True)
-Path("./logs").mkdir(parents=True, exist_ok=True)
