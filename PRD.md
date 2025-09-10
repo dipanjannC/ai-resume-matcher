@@ -4,7 +4,7 @@ This is a practical, **AI-enhanced technical design** for an intelligent resume-
 
 ## Final recommendation
 
-Use the **Monolith MVP (FastAPI + LangChain + Sentence-Transformers + ChromaDB + Postgres + S3)**. It minimizes moving parts, uses a single language, relies on off-the-shelf components, and gives immediate, explainable results. **LangChain** provides intelligent data extraction from unstructured resumes using LLM-powered prompts. ChromaDB provides a persistent vector database with built-in metadata storage, simplifying the architecture. It's the fastest path from zero → demoable prototype with a clean path to production hardening.hnical design (easy-to-build option) — Resume Matching Platform
+Use the **Monolith MVP (Streamlit + FastAPI + LangChain + Sentence-Transformers + ChromaDB + S3)**. It minimizes moving parts, uses a single language, relies on off-the-shelf components, and gives immediate, explainable results. **LangChain** provides intelligent data extraction from unstructured resumes using LLM-powered prompts. ChromaDB provides a persistent vector database with built-in metadata storage, simplifying the architecture. **Streamlit** offers an interactive web interface with real-time visualization capabilities. It's the fastest path from zero → demoable prototype with a clean path to production hardening.
 
 Great — you want a practical, **easy-to-build technical design** for the resume-matching platform (the one-day / MVP-friendly route). Below I give a # 13 — Final recommendation (which is easiest)
 

@@ -5,6 +5,11 @@ python-multipart==0.0.6
 pydantic==2.5.0
 pydantic-settings==2.1.0
 
+# Streamlit web interface
+streamlit==1.29.0
+plotly==5.17.0
+pandas==2.1.4
+
 # LangChain and LLM integration
 langchain==0.1.0
 langchain-openai==0.0.5

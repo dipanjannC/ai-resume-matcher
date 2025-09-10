@@ -69,15 +69,21 @@ class VectorStore:
     
     def search_similar(self, query_embedding: List[float], 
                       top_k: int = 10, 
+                      collection_name: Optional[str] = None,
                       filter_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Search for similar resumes"""
+        """Search for similar documents in specified collection"""
         try:
-            if not self.collection:
-                raise VectorStoreException("Collection not initialized")
+            if collection_name:
+                collection = self.get_or_create_collection(collection_name)
+            else:
+                collection = self.collection
+            
+            if not collection:
+                raise VectorStoreException("Collection not available")
                 
             where_clause = filter_metadata if filter_metadata else None
             
-            results = self.collection.query(
+            results = collection.query(
                 query_embeddings=[query_embedding],
                 n_results=top_k,
                 where=where_clause,
@@ -98,24 +104,29 @@ class VectorStore:
                 documents_data = results.get('documents')
                 documents = documents_data[0] if documents_data and len(documents_data) > 0 else []
                 
-                for i, candidate_id in enumerate(ids):
+                for i, doc_id in enumerate(ids):
                     distance = distances[i] if distances and i < len(distances) else 0.0
+                    metadata = metadatas[i] if metadatas and i < len(metadatas) else {}
+                    
+                    # Use appropriate ID field based on collection
+                    id_field = "job_id" if collection_name == "job_descriptions" else "candidate_id"
+                    
                     result = {
-                        'candidate_id': candidate_id,
+                        id_field: doc_id,
                         'distance': distance,
                         'similarity': 1 - distance,
-                        'metadata': metadatas[i] if metadatas and i < len(metadatas) else {},
+                        'metadata': metadata,
                         'document': documents[i] if documents and i < len(documents) else ""
                     }
                     formatted_results.append(result)
             
-            logger.info("Search completed", 
+            logger.info(f"Search completed in {collection_name or self.collection_name}", 
                        query_results=len(formatted_results), top_k=top_k)
             
             return formatted_results
             
         except Exception as e:
-            logger.error("Failed to search similar resumes", error=str(e))
+            logger.error("Failed to search similar documents", error=str(e))
             raise VectorStoreException(f"Failed to search: {str(e)}")
     
     def get_all_candidates(self) -> List[Dict[str, Any]]:
@@ -203,6 +214,82 @@ class VectorStore:
         except Exception as e:
             logger.error("Failed to get collection stats", error=str(e))
             return {'total_resumes': 0, 'collection_name': self.collection_name}
+    
+    def get_or_create_collection(self, collection_name: str):
+        """Get or create a specific collection"""
+        try:
+            if not self.client:
+                self._initialize_client()
+            
+            if not self.client:
+                raise VectorStoreException("Failed to initialize ChromaDB client")
+            
+            collection = self.client.get_or_create_collection(
+                name=collection_name,
+                metadata={"description": f"Collection for {collection_name}"}
+            )
+            logger.info(f"Got or created collection: {collection_name}")
+            return collection
+            
+        except Exception as e:
+            logger.error(f"Failed to get/create collection {collection_name}: {str(e)}")
+            raise VectorStoreException(f"Failed to get/create collection: {str(e)}")
+    
+    def add_document(self, collection_name: str, document_id: str, embedding: List[float], 
+                    document: str, metadata: Dict[str, Any]) -> str:
+        """Add a document to a specific collection"""
+        try:
+            collection = self.get_or_create_collection(collection_name)
+            
+            collection.add(
+                embeddings=[embedding],
+                documents=[document],
+                metadatas=[metadata],
+                ids=[document_id]
+            )
+            
+            logger.info(f"Added document to {collection_name}", document_id=document_id)
+            return document_id
+            
+        except Exception as e:
+            logger.error(f"Failed to add document to {collection_name}", 
+                        document_id=document_id, error=str(e))
+            raise VectorStoreException(f"Failed to add document: {str(e)}")
+    
+    def delete_document(self, collection_name: str, document_id: str) -> bool:
+        """Delete a document from a specific collection"""
+        try:
+            collection = self.get_or_create_collection(collection_name)
+            collection.delete(ids=[document_id])
+            
+            logger.info(f"Deleted document from {collection_name}", document_id=document_id)
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete document from {collection_name}", 
+                        document_id=document_id, error=str(e))
+            return False
+    
+    def update_document(self, collection_name: str, document_id: str, embedding: List[float],
+                       document: str, metadata: Dict[str, Any]) -> bool:
+        """Update a document in a specific collection"""
+        try:
+            collection = self.get_or_create_collection(collection_name)
+            
+            collection.update(
+                ids=[document_id],
+                embeddings=[embedding],
+                documents=[document],
+                metadatas=[metadata]
+            )
+            
+            logger.info(f"Updated document in {collection_name}", document_id=document_id)
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update document in {collection_name}", 
+                        document_id=document_id, error=str(e))
+            return False
 
 
 # Create global instance

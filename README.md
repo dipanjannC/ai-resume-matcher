@@ -6,12 +6,13 @@ A simplified, human-readable AI resume matching system that uses LangChain agent
 
 ## 🎯 **Key Features**
 
+- **🌐 Streamlit Web Interface**: Interactive web application with visualizations
 - **🤖 LangChain Agents**: Intelligent resume and job description parsing
-- **📊 Structured Data Extraction**: Profile, experience, skills, topics, tools
-- **🎯 Smart Matching**: AI-powered candidate scoring and recommendations  
-- **🔍 Vector Search**: Semantic similarity using ChromaDB
-- **📁 File-Based Storage**: No PostgreSQL/Redis complexity
-- **🎨 Interactive Demo**: Rich CLI interface for testing
+- **📊 Real-time Analytics**: Charts, graphs, and data insights with Plotly
+- **🎯 Job Management**: Store job descriptions and find top candidates
+- **� Vector Search**: Semantic similarity using ChromaDB multi-collections
+- **🎨 Interactive Demo**: Rich CLI and web interfaces for testing
+- **📈 Visualization**: Match scoring, candidate comparison, and analytics
 
 ## 🚀 **Quick Start**
 
@@ -32,7 +33,19 @@ python demo_example.py
 
 ## 🎮 **Usage Modes**
 
-### **🎯 Interactive Demo (Recommended)**
+### **� Streamlit Web Interface (Recommended)**
+```bash
+python run_streamlit.py
+# Or directly: streamlit run streamlit_app.py
+# Visit http://localhost:8501
+```
+- **📄 Resume Upload**: Multi-file upload with progress tracking
+- **📋 Job Management**: Add and store job descriptions  
+- **🎯 Interactive Matching**: Real-time candidate-job matching
+- **📊 Analytics Dashboard**: Visualizations and insights
+- **🔍 Advanced Search**: Filter and search candidates
+
+### **🎯 Interactive Demo (CLI)**
 ```bash
 python demo_example.py
 ```

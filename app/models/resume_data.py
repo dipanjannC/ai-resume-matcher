@@ -105,7 +105,10 @@ class JobDescription:
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
     title: str = ""
     company: str = ""
+    location: str = ""
     raw_text: str = ""
+    summary: str = ""
+    created_at: datetime = field(default_factory=datetime.now)
     processed_at: datetime = field(default_factory=datetime.now)
     
     # Extracted requirements
@@ -124,7 +127,10 @@ class JobDescription:
             "id": self.id,
             "title": self.title,
             "company": self.company,
+            "location": self.location,
             "raw_text": self.raw_text,
+            "summary": self.summary,
+            "created_at": self.created_at.isoformat(),
             "processed_at": self.processed_at.isoformat(),
             "required_skills": self.required_skills,
             "preferred_skills": self.preferred_skills,
@@ -133,6 +139,30 @@ class JobDescription:
             "responsibilities": self.responsibilities,
             "has_embedding": self.embedding is not None
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'JobDescription':
+        """Create JobDescription from dictionary"""
+        # Convert ISO datetime strings back to datetime objects
+        created_at = datetime.fromisoformat(data.get("created_at", datetime.now().isoformat()))
+        processed_at = datetime.fromisoformat(data.get("processed_at", datetime.now().isoformat()))
+        
+        return cls(
+            id=data.get("id", str(uuid.uuid4())),
+            title=data.get("title", ""),
+            company=data.get("company", ""),
+            location=data.get("location", ""),
+            raw_text=data.get("raw_text", ""),
+            summary=data.get("summary", ""),
+            created_at=created_at,
+            processed_at=processed_at,
+            required_skills=data.get("required_skills", []),
+            preferred_skills=data.get("preferred_skills", []),
+            experience_years=data.get("experience_years", 0),
+            education_level=data.get("education_level", ""),
+            responsibilities=data.get("responsibilities", []),
+            embedding=None  # Embeddings are not stored in JSON
+        )
 
 
 @dataclass
@@ -146,6 +176,9 @@ class MatchResult:
     skills_match_score: float
     experience_match_score: float
     semantic_similarity_score: float
+    
+    # UI display fields
+    candidate_name: str = ""  # Add candidate name for UI display
     
     # Detailed analysis
     matching_skills: List[str] = field(default_factory=list)

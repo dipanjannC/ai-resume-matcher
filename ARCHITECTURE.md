@@ -16,18 +16,20 @@ The AI Resume Matcher is a sophisticated system that leverages LangChain agents 
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        FastAPI Application                       │
+│                    Frontend Interfaces                          │
 ├─────────────────────────────────────────────────────────────────┤
-│                          app/main.py                            │
-│                    (REST API Endpoints)                         │
+│          Streamlit Web App          │      FastAPI Server       │
+│         streamlit_app.py            │        app/main.py         │
+│   (Interactive Web Interface)       │   (REST API Endpoints)    │
 └─────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Resume Processing Layer                       │
+│                    Processing Layer                              │
 ├─────────────────────────────────────────────────────────────────┤
-│                app/services/resume_processor.py                 │
-│              (Main orchestrator & coordinator)                  │
+│      app/services/resume_processor.py                          │
+│      app/services/job_processor.py                             │
+│         (Main orchestrators & coordinators)                     │
 └─────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┼───────────────┐
@@ -39,10 +41,10 @@ The AI Resume Matcher is a sophisticated system that leverages LangChain agents 
 │ langchain_      │ │  embeddings.py  │ │ vector_store.py │
 │ agents.py       │ │                 │ │                 │
 │                 │ │ sentence-       │ │   ChromaDB      │
-│ - Resume Parser │ │ transformers    │ │   Persistent    │
-│ - Job Analyzer  │ │                 │ │                 │
-│ - Matcher       │ │ Text→Vectors    │ │ Vector Storage  │
-│ - Summarizer    │ │                 │ │ & Search        │
+│ - Resume Parser │ │ transformers    │ │ Multi-Collection│
+│ - Job Analyzer  │ │                 │ │ Vector Storage  │
+│ - Matcher       │ │ Text→Vectors    │ │ & Search        │
+│ - Summarizer    │ │                 │ │ (Resumes & Jobs)│
 └─────────────────┘ └─────────────────┘ └─────────────────┘
         │                                       │
         ▼                                       │
@@ -69,20 +71,49 @@ The AI Resume Matcher is a sophisticated system that leverages LangChain agents 
 │                 │ │                 │ │ Settings &      │
 │ resume_data.py  │ │ Text Extraction │ │ Error Handling  │
 └─────────────────┘ └─────────────────┘ └─────────────────┘
-│   File Utils    │ │  Prompt Manager │ │   Core Utils    │
-├─────────────────┤ ├─────────────────┤ ├─────────────────┤
-│ file_utils.py   │ │ prompt_manager  │ │   config.py     │
-│                 │ │     .py         │ │ exceptions.py   │
-│ PDF/DOCX        │ │                 │ │  logging.py     │
-│ Processing      │ │ System Prompts  │ │                 │
-│                 │ │ Role Prompts    │ │ Settings &      │
-│ Text Extraction │ │ User Prompts    │ │ Error Handling  │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
 ## Core Components
 
-### 1. LangChain Agents (`app/services/langchain_agents.py`)
+### 1. Streamlit Web Interface (`streamlit_app.py`)
+
+**Purpose**: Interactive web application for resume upload, job management, and visualization
+
+**Key Features**:
+
+- **Resume Upload & Processing**: Multi-file upload with progress tracking
+- **Job Description Management**: Store and manage job descriptions in vector store
+- **Interactive Matching**: Real-time candidate-job matching with visualizations
+- **Analytics Dashboard**: Charts, graphs, and insights using Plotly
+- **Search & Filter**: Advanced candidate search capabilities
+
+**Pages**:
+
+- **📄 Resume Upload**: Upload and process resume files
+- **📋 Job Management**: Add and manage job descriptions
+- **🎯 Job Matching**: Find and visualize candidate matches
+- **📊 Analytics**: Data insights and statistics
+- **🔍 Search**: Advanced candidate search and filtering
+
+### 2. Job Processor Service (`app/services/job_processor.py`)
+
+**Purpose**: Handles job description storage, management, and candidate matching
+
+**Key Functions**:
+
+- `process_and_store_job()`: Process job descriptions with LangChain and store in vector database
+- `find_candidates_for_job()`: Find top candidates for specific jobs using vector similarity
+- `list_stored_jobs()`: Retrieve all stored job descriptions
+- `search_jobs()`: Search jobs by text query using vector similarity
+
+**Features**:
+
+- **Vector Storage**: Store job descriptions in dedicated ChromaDB collection
+- **Intelligent Parsing**: Use LangChain agents for structured data extraction
+- **Candidate Matching**: Vector similarity search to find best candidates
+- **Job Management**: CRUD operations for job descriptions
+
+### 3. LangChain Agents (`app/services/langchain_agents.py`)
 
 **Purpose**: Central AI intelligence using OpenAI GPT-3.5-turbo for structured data extraction
 

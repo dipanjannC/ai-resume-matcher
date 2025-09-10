@@ -18,6 +18,8 @@ class LangChainPromptManager:
         self.resume_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert AI resume parser. Extract comprehensive structured information from resumes.
             
+            IMPORTANT: You MUST respond with valid JSON format only. Do not include any explanatory text before or after the JSON.
+            
             Focus on:
             - Accurate profile information extraction
             - Detailed experience analysis with years calculation
@@ -32,13 +34,17 @@ class LangChainPromptManager:
 
 {resume_text}
 
-{format_instructions}""")
+{format_instructions}
+
+Return ONLY valid JSON format with no additional text.""")
         ])
 
     def _create_job_parsing_prompts(self):
         """Create prompts for job description parsing agent"""
         self.job_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert job description analyzer. Extract key requirements and details from job postings.
+            
+            IMPORTANT: You MUST respond with valid JSON format only. Do not include any explanatory text before or after the JSON.
             
             Focus on:
             - Clear identification of required vs preferred skills
@@ -53,7 +59,9 @@ class LangChainPromptManager:
 
 {job_text}
 
-{format_instructions}""")
+{format_instructions}
+
+Return ONLY valid JSON format with no additional text.""")
         ])
 
     def _create_matching_prompts(self):

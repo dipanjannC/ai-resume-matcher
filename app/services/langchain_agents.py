@@ -4,6 +4,8 @@ Focused on clean, human-readable AI-powered parsing and analysis.
 """
 
 import asyncio
+import json
+import re
 from typing import Dict, Any, List, Optional
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -48,6 +50,27 @@ class LangChainAgents:
         
         logger.info("LangChain agents initialized successfully")
     
+    def _clean_json_response(self, response_text: str) -> str:
+        """
+        Clean LLM response to extract valid JSON.
+        
+        Args:
+            response_text: Raw response from LLM
+            
+        Returns:
+            Cleaned JSON string
+        """
+        # Remove markdown code blocks if present
+        response_text = re.sub(r'^```json\s*', '', response_text, flags=re.MULTILINE)
+        response_text = re.sub(r'^```\s*$', '', response_text, flags=re.MULTILINE)
+        
+        # Find JSON content between braces
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            return json_match.group(0)
+        
+        return response_text.strip()
+    
     async def parse_resume(self, resume_text: str) -> ResumeData:
         """
         Parse resume using LangChain agent and return structured data.
@@ -61,14 +84,30 @@ class LangChainAgents:
         try:
             logger.info("Starting resume parsing with LangChain agent")
             
-            # Create chain
-            chain = self.resume_prompt | self.llm | self.resume_parser
+            # Get format instructions
+            format_instructions = self.resume_parser.get_format_instructions()
             
-            # Parse resume
-            result = await chain.ainvoke({
+            # Create LLM chain without parser first
+            llm_chain = self.resume_prompt | self.llm
+            
+            # Get raw LLM response
+            raw_response = await llm_chain.ainvoke({
                 "resume_text": resume_text,
-                "format_instructions": self.resume_parser.get_format_instructions()
+                "format_instructions": format_instructions
             })
+            
+            logger.info(f"Raw LLM response: {raw_response.content[:500]}...")
+            
+            # Clean and parse the response
+            try:
+                cleaned_response = self._clean_json_response(str(raw_response.content))
+                result = self.resume_parser.parse(cleaned_response)
+            except Exception as parse_error:
+                logger.error(f"Failed to parse LLM output: {str(parse_error)}")
+                logger.error(f"Raw output was: {raw_response.content}")
+                
+                # Fallback: create a basic structure
+                result = self._create_fallback_resume_structure(resume_text)
             
             # Convert to ResumeData object
             resume_data = ResumeData(
@@ -89,6 +128,61 @@ class LangChainAgents:
             logger.error(f"Failed to parse resume: {str(e)}")
             raise ResumeMatcherException(f"Resume parsing failed: {str(e)}")
     
+    def _create_fallback_resume_structure(self, resume_text: str) -> ResumeParsingOutput:
+        """Create a basic fallback structure when parsing fails"""
+        return ResumeParsingOutput(
+            profile={
+                "name": "Unknown",
+                "title": "Unknown",
+                "email": "",
+                "phone": "",
+                "linkedin": "",
+                "location": ""
+            },
+            experience={
+                "total_years": 0,
+                "roles": [],
+                "companies": [],
+                "responsibilities": [],
+                "achievements": []
+            },
+            skills={
+                "technical": [],
+                "soft": [],
+                "certifications": [],
+                "languages": []
+            },
+            topics={
+                "domains": [],
+                "specializations": [],
+                "interests": []
+            },
+            tools_libraries={
+                "programming_languages": [],
+                "frameworks": [],
+                "tools": [],
+                "databases": [],
+                "cloud_platforms": []
+            },
+            summary="Resume parsing failed - manual review required",
+            key_strengths=["Manual review required"]
+        )
+    
+    def _create_fallback_job_structure(self, job_text: str) -> JobParsingOutput:
+        """Create a basic fallback structure when job parsing fails"""
+        return JobParsingOutput(
+            title="Unknown Position",
+            company="Unknown Company",
+            required_skills=[],
+            preferred_skills=[],
+            experience_years=0,
+            education_level="Not specified",
+            responsibilities=[],
+            requirements=[],
+            company_info="",
+            summary="Job parsing failed - manual review required"
+        )
+    
     async def parse_job_description(self, job_text: str) -> JobDescription:
         """
         Parse job description using LangChain agent.
@@ -102,14 +196,30 @@ class LangChainAgents:
         try:
             logger.info("Starting job description parsing with LangChain agent")
             
-            # Create chain
-            chain = self.job_prompt | self.llm | self.job_parser
+            # Get format instructions
+            format_instructions = self.job_parser.get_format_instructions()
             
-            # Parse job description
-            result = await chain.ainvoke({
+            # Create LLM chain without parser first
+            llm_chain = self.job_prompt | self.llm
+            
+            # Get raw LLM response
+            raw_response = await llm_chain.ainvoke({
                 "job_text": job_text,
-                "format_instructions": self.job_parser.get_format_instructions()
+                "format_instructions": format_instructions
             })
+            
+            logger.info(f"Raw job parsing response: {raw_response.content[:300]}...")
+            
+            # Clean and parse the response
+            try:
+                cleaned_response = self._clean_json_response(str(raw_response.content))
+                result = self.job_parser.parse(cleaned_response)
+            except Exception as parse_error:
+                logger.error(f"Failed to parse job LLM output: {str(parse_error)}")
+                logger.error(f"Raw output was: {raw_response.content}")
+                
+                # Fallback: create a basic structure
+                result = self._create_fallback_job_structure(job_text)
             
             # Convert to JobDescription object
             job_data = JobDescription(
@@ -179,6 +289,7 @@ class LangChainAgents:
                 skills_match_score=result.skills_match_score,
                 experience_match_score=result.experience_match_score,
                 semantic_similarity_score=0.0,  # Will be set by vector similarity
+                candidate_name=resume_data.profile.name or f"Candidate {resume_data.id[:8]}",
                 matching_skills=result.matching_skills,
                 missing_skills=result.missing_skills,
                 strength_areas=result.strength_areas,
