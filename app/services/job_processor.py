@@ -81,14 +81,15 @@ class JobProcessor:
             embedding = self.embedding_service.generate_embedding(job_text)
             job_data.embedding = embedding
             
-            # Store in vector database
+            # Store in vector database with proper metadata types
             metadata = {
                 "job_id": job_data.id,
                 "title": job_data.title,
                 "company": job_data.company,
                 "experience_years": job_data.experience_years,
                 "location": job_data.location,
-                "required_skills": job_data.required_skills,
+                "required_skills": ", ".join(job_data.required_skills) if job_data.required_skills else "",
+                "skills_count": len(job_data.required_skills) if job_data.required_skills else 0,
                 "created_at": job_data.created_at.isoformat()
             }
             

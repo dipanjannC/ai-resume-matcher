@@ -52,13 +52,13 @@ class LangChainAgents:
     
     def _clean_json_response(self, response_text: str) -> str:
         """
-        Clean LLM response to extract valid JSON.
+        Clean LLM response to extract valid JSON and handle null values.
         
         Args:
             response_text: Raw response from LLM
             
         Returns:
-            Cleaned JSON string
+            Cleaned JSON string with null values replaced
         """
         # Remove markdown code blocks if present
         response_text = re.sub(r'^```json\s*', '', response_text, flags=re.MULTILINE)
@@ -67,9 +67,38 @@ class LangChainAgents:
         # Find JSON content between braces
         json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
         if json_match:
-            return json_match.group(0)
+            json_text = json_match.group(0)
+        else:
+            json_text = response_text.strip()
         
-        return response_text.strip()
+        # Parse and clean the JSON to handle null values
+        try:
+            parsed_json = json.loads(json_text)
+            
+            # Replace null values with appropriate defaults
+            def clean_nulls(obj):
+                if isinstance(obj, dict):
+                    for key, value in obj.items():
+                        if value is None:
+                            # Set appropriate defaults based on expected types
+                            if key in ['title', 'company', 'education_level', 'company_info', 'summary']:
+                                obj[key] = ""
+                            elif key in ['required_skills', 'preferred_skills', 'responsibilities', 'requirements']:
+                                obj[key] = []
+                            elif key in ['experience_years']:
+                                obj[key] = 0
+                        else:
+                            obj[key] = clean_nulls(value)
+                elif isinstance(obj, list):
+                    return [clean_nulls(item) for item in obj]
+                return obj
+            
+            cleaned_json = clean_nulls(parsed_json)
+            return json.dumps(cleaned_json)
+            
+        except json.JSONDecodeError:
+            # If JSON parsing fails, return original text
+            return json_text
     
     async def parse_resume(self, resume_text: str) -> ResumeData:
         """
@@ -335,3 +364,26 @@ class LangChainAgents:
 
 # Global instance
 langchain_agents = LangChainAgents()
+
+
+if __name__ == "__main__":
+    # Simple test
+    async def test():
+        sample_resume = """
+        John Doe
+        Software Engineer with 5 years of experience in Python, Java, and cloud technologies.
+        Skilled in developing scalable web applications and working in agile teams.
+        """
+        
+        sample_job = """
+        We are looking for a Software Engineer with at least 3 years of experience in Python and cloud platforms.
+        Responsibilities include developing web applications and collaborating with cross-functional teams.
+        """
+        
+        resume_data = await langchain_agents.parse_resume(sample_resume)
+        job_data = await langchain_agents.parse_job_description(sample_job)
+        match_result = await langchain_agents.analyze_match(resume_data, job_data)
+        
+        print("Match Result:", match_result)
+    
+    asyncio.run(test())

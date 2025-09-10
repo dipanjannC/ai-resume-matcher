@@ -62,11 +62,12 @@ class ResumeProcessor:
             embedding = self.embedding_service.generate_embedding(resume_text)
             resume_data.embedding = embedding
             
-            # Store in vector database
+            # Store in vector database with proper metadata types
             metadata = {
                 "candidate_id": resume_data.id,
                 "filename": resume_data.filename,
-                "skills": resume_data.skills.technical,
+                "skills": ", ".join(resume_data.skills.technical) if resume_data.skills.technical else "",
+                "skills_count": len(resume_data.skills.technical) if resume_data.skills.technical else 0,
                 "experience_years": resume_data.experience.total_years,
                 "processed_at": resume_data.processed_at.isoformat()
             }
@@ -114,11 +115,12 @@ class ResumeProcessor:
             embedding = self.embedding_service.generate_embedding(content)
             resume_data.embedding = embedding
             
-            # Store in vector database
+            # Store in vector database with proper metadata types
             metadata = {
                 "candidate_id": resume_data.id,
                 "filename": filename,
-                "skills": resume_data.skills.technical,
+                "skills": ", ".join(resume_data.skills.technical) if resume_data.skills.technical else "",
+                "skills_count": len(resume_data.skills.technical) if resume_data.skills.technical else 0,
                 "experience_years": resume_data.experience.total_years,
                 "processed_at": resume_data.processed_at.isoformat()
             }

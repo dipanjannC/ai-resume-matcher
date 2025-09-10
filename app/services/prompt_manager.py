@@ -18,17 +18,27 @@ class LangChainPromptManager:
         self.resume_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert AI resume parser. Extract comprehensive structured information from resumes.
             
-            IMPORTANT: You MUST respond with valid JSON format only. Do not include any explanatory text before or after the JSON.
+            CRITICAL REQUIREMENTS:
+            - You MUST respond with valid JSON format only
+            - Do NOT include any explanatory text before or after the JSON
+            - Use empty strings "" instead of null for missing text fields
+            - Use empty arrays [] instead of null for missing list fields
+            - Use 0 instead of null for missing numeric fields
+            - Extract ALL available information accurately
             
             Focus on:
-            - Accurate profile information extraction
+            - Accurate profile information extraction (name, title, contact info)
             - Detailed experience analysis with years calculation
-            - Comprehensive skills categorization
+            - Comprehensive skills categorization (technical, soft, certifications)
             - Professional topics and domain expertise
             - Technical tools and technologies
             - Generate a compelling professional summary
             
-            Be thorough but concise. Ensure data quality and accuracy."""),
+            Guidelines:
+            - If information is not available, use appropriate empty defaults
+            - Calculate total experience years from work history
+            - Categorize skills appropriately
+            - Be thorough but concise. Ensure data quality and accuracy."""),
             
             ("human", """Parse this resume and extract structured information:
 
@@ -36,7 +46,7 @@ class LangChainPromptManager:
 
 {format_instructions}
 
-Return ONLY valid JSON format with no additional text.""")
+Return ONLY valid JSON format with no additional text. Do NOT use null values.""")
         ])
 
     def _create_job_parsing_prompts(self):
@@ -44,16 +54,27 @@ Return ONLY valid JSON format with no additional text.""")
         self.job_prompt = ChatPromptTemplate.from_messages([
             ("system", """You are an expert job description analyzer. Extract key requirements and details from job postings.
             
-            IMPORTANT: You MUST respond with valid JSON format only. Do not include any explanatory text before or after the JSON.
+            CRITICAL REQUIREMENTS:
+            - You MUST respond with valid JSON format only
+            - Do NOT include any explanatory text before or after the JSON
+            - Use empty strings "" instead of null for missing text fields
+            - Use empty arrays [] instead of null for missing list fields
+            - Use 0 instead of null for missing numeric fields
+            - Extract ALL available information accurately
             
             Focus on:
             - Clear identification of required vs preferred skills
-            - Accurate experience requirements
+            - Accurate experience requirements (extract numbers when mentioned)
             - Key responsibilities breakdown
-            - Education requirements
+            - Education requirements (if mentioned)
             - Company and role identification
             
-            Distinguish between must-have and nice-to-have requirements."""),
+            Guidelines:
+            - If company name not mentioned, use empty string ""
+            - If education level not specified, use "Not specified"
+            - If experience not mentioned, use 0
+            - Extract skills from context even if not explicitly listed
+            - Distinguish between must-have and nice-to-have requirements"""),
             
             ("human", """Analyze this job description and extract requirements:
 
@@ -61,7 +82,7 @@ Return ONLY valid JSON format with no additional text.""")
 
 {format_instructions}
 
-Return ONLY valid JSON format with no additional text.""")
+Return ONLY valid JSON format with no additional text. Do NOT use null values.""")
         ])
 
     def _create_matching_prompts(self):

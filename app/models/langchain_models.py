@@ -20,16 +20,16 @@ class ResumeParsingOutput(BaseModel):
 
 class JobParsingOutput(BaseModel):
     """Structured output for job description parsing"""
-    title: str = Field(description="Job title")
-    company: str = Field(description="Company name")
-    required_skills: List[str] = Field(description="Must-have skills")
-    preferred_skills: List[str] = Field(description="Nice-to-have skills")
-    experience_years: int = Field(description="Required years of experience")
-    education_level: str = Field(description="Required education level")
-    responsibilities: List[str] = Field(description="Key responsibilities")
-    requirements: List[str] = Field(description="All job requirements")
-    company_info: str = Field(description="Company information")
-    summary: str = Field(description="Job summary")
+    title: str = Field(description="Job title", default="Unknown Position")
+    company: str = Field(description="Company name", default="Unknown Company")
+    required_skills: List[str] = Field(description="Must-have skills", default_factory=list)
+    preferred_skills: List[str] = Field(description="Nice-to-have skills", default_factory=list)
+    experience_years: int = Field(description="Required years of experience", default=0)
+    education_level: str = Field(description="Required education level", default="Not specified")
+    responsibilities: List[str] = Field(description="Key responsibilities", default_factory=list)
+    requirements: List[str] = Field(description="All job requirements", default_factory=list)
+    company_info: str = Field(description="Company information", default="")
+    summary: str = Field(description="Job summary", default="")
 
 
 class MatchAnalysisOutput(BaseModel):
