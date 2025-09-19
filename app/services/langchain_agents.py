@@ -361,6 +361,101 @@ class LangChainAgents:
             logger.error(f"Failed to generate summary: {str(e)}")
             return resume_data.summary  # Fallback to original summary
 
+    async def customize_resume_for_job(self, context: Dict[str, Any], prompt: ChatPromptTemplate) -> Optional[Dict[str, Any]]:
+        """
+        Customize a resume for a specific job using LangChain
+        
+        Args:
+            context: Dictionary containing resume and job information
+            prompt: ChatPromptTemplate for customization
+            
+        Returns:
+            Dictionary containing customized resume sections
+        """
+        try:
+            logger.info("Customizing resume using LangChain agents")
+            
+            # Create chain
+            chain = prompt | self.llm
+            
+            # Invoke chain with context
+            result = await chain.ainvoke(context)
+            
+            # Parse JSON response
+            response_text = str(result.content) if hasattr(result, 'content') else str(result)
+            
+            # Clean and parse JSON
+            cleaned_response = self._clean_json_response(response_text)
+            customization_data = json.loads(cleaned_response)
+            
+            return customization_data
+            
+        except Exception as e:
+            logger.error(f"Failed to customize resume: {str(e)}")
+            return None
+
+    async def generate_cover_letter(self, context: Dict[str, Any], prompt: ChatPromptTemplate) -> Optional[str]:
+        """
+        Generate a cover letter using LangChain
+        
+        Args:
+            context: Dictionary containing candidate and job information
+            prompt: ChatPromptTemplate for cover letter generation
+            
+        Returns:
+            Generated cover letter text
+        """
+        try:
+            logger.info("Generating cover letter using LangChain agents")
+            
+            # Create chain
+            chain = prompt | self.llm
+            
+            # Invoke chain with context
+            result = await chain.ainvoke(context)
+            
+            # Extract cover letter text
+            cover_letter = str(result.content) if hasattr(result, 'content') else str(result)
+            
+            return cover_letter.strip()
+            
+        except Exception as e:
+            logger.error(f"Failed to generate cover letter: {str(e)}")
+            return None
+
+    async def analyze_customization_needs(self, context: Dict[str, Any], prompt: ChatPromptTemplate) -> Optional[Dict[str, Any]]:
+        """
+        Analyze customization needs for a resume using LangChain
+        
+        Args:
+            context: Dictionary containing resume and job analysis information
+            prompt: ChatPromptTemplate for customization analysis
+            
+        Returns:
+            Dictionary containing customization suggestions
+        """
+        try:
+            logger.info("Analyzing customization needs using LangChain agents")
+            
+            # Create chain
+            chain = prompt | self.llm
+            
+            # Invoke chain with context
+            result = await chain.ainvoke(context)
+            
+            # Parse JSON response
+            response_text = str(result.content) if hasattr(result, 'content') else str(result)
+            
+            # Clean and parse JSON
+            cleaned_response = self._clean_json_response(response_text)
+            suggestions_data = json.loads(cleaned_response)
+            
+            return suggestions_data
+            
+        except Exception as e:
+            logger.error(f"Failed to analyze customization needs: {str(e)}")
+            return None
+
 
 # Global instance
 langchain_agents = LangChainAgents()

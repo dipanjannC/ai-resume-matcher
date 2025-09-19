@@ -11,6 +11,7 @@ class LangChainPromptManager:
         self._create_resume_parsing_prompts()
         self._create_job_parsing_prompts()
         self._create_matching_prompts()
+        self._create_customization_prompts()
         self._create_legacy_prompts()
 
     def _create_resume_parsing_prompts(self):
@@ -130,6 +131,130 @@ Key Skills: {key_skills}
 Strengths: {strengths}""")
         ])
 
+    def _create_customization_prompts(self):
+        """Create prompts for resume customization and cover letter generation"""
+        self.resume_customization_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert resume customization specialist. Your task is to customize a resume to better match a specific job description while maintaining truthfulness and authenticity.
+
+Guidelines:
+- NEVER fabricate experience, skills, or qualifications
+- Focus on reordering, emphasizing, and rewording existing content
+- Highlight relevant experience and skills that match the job requirements
+- Suggest improvements to summaries and bullet points
+- Recommend relevant keywords from the job description
+- Maintain professional formatting and structure
+- Provide specific, actionable suggestions
+
+Return a JSON response with the following structure:
+{
+  "customized_summary": "Enhanced professional summary",
+  "emphasized_skills": ["skill1", "skill2"],
+  "experience_modifications": [
+    {
+      "section": "work_experience",
+      "suggestions": ["suggestion1", "suggestion2"]
+    }
+  ],
+  "keyword_suggestions": ["keyword1", "keyword2"],
+  "customization_summary": "Brief explanation of key changes made"
+}"""),
+            
+            ("human", """Customize this resume for the target job:
+
+ORIGINAL RESUME:
+{original_resume}
+
+TARGET JOB:
+{job_description}
+
+Job Title: {job_title}
+Company: {company}
+Required Skills: {required_skills}
+Experience Required: {experience_required} years
+
+Provide customization suggestions that emphasize relevant experience and skills.""")
+        ])
+
+        self.cover_letter_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an expert cover letter writer. Create compelling, personalized cover letters that highlight the candidate's relevant experience and enthusiasm for the specific role.
+
+Guidelines:
+- Write in a professional but engaging tone
+- Keep it concise (3-4 paragraphs)
+- Start with a strong opening that mentions the specific role
+- Highlight 2-3 most relevant qualifications or experiences
+- Show knowledge of the company/role
+- End with a call to action
+- Avoid generic phrases and clichés
+- Make it feel personal and authentic
+
+Structure:
+1. Opening: Role interest and brief introduction
+2. Body: Relevant experience and skills (1-2 paragraphs)
+3. Closing: Enthusiasm and next steps
+
+Return the cover letter as plain text."""),
+            
+            ("human", """Write a personalized cover letter for this candidate and job:
+
+CANDIDATE INFO:
+Name: {candidate_name}
+Experience: {candidate_experience_years} years
+Summary: {candidate_experience}
+Key Skills: {candidate_skills}
+
+JOB DETAILS:
+Position: {job_title}
+Company: {company}
+Location: {location}
+Required Skills: {required_skills}
+
+Job Requirements:
+{job_requirements}
+
+Create a compelling cover letter that connects the candidate's background to this specific opportunity.""")
+        ])
+
+        self.customization_analysis_prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a career counselor specializing in resume optimization. Analyze a resume against a job description and provide detailed customization recommendations.
+
+Your analysis should identify:
+- Skill gaps between the resume and job requirements
+- Experience alignment issues
+- Missing keywords that should be incorporated
+- Priority areas for improvement
+- Specific actionable recommendations
+
+Return a JSON response with:
+{
+  "skill_gaps": ["missing skill 1", "missing skill 2"],
+  "experience_recommendations": ["suggestion 1", "suggestion 2"],
+  "keyword_suggestions": ["keyword 1", "keyword 2"],
+  "priority_changes": [
+    {
+      "priority": "high/medium/low",
+      "change": "specific recommendation",
+      "reason": "explanation"
+    }
+  ],
+  "overall_assessment": "summary of candidacy strength"
+}"""),
+            
+            ("human", """Analyze this resume against the job requirements:
+
+RESUME OVERVIEW:
+Skills: {resume_skills}
+Experience: {resume_experience} years
+Summary: {resume_summary}
+
+JOB REQUIREMENTS:
+Required Skills: {job_requirements}
+Experience Required: {job_experience_required} years
+Job Description: {job_description}
+
+Provide detailed customization recommendations to improve the resume's match for this role.""")
+        ])
+
     def _create_legacy_prompts(self):
         """Create legacy prompts for backward compatibility"""
         self.ROLE_PROMPT = """ 
@@ -186,6 +311,18 @@ Answer:
     def get_summary_prompt(self) -> ChatPromptTemplate:
         """Get prompt template for summary enhancement"""
         return self.summary_prompt
+
+    def get_resume_customization_prompt(self) -> ChatPromptTemplate:
+        """Get prompt template for resume customization"""
+        return self.resume_customization_prompt
+
+    def get_cover_letter_prompt(self) -> ChatPromptTemplate:
+        """Get prompt template for cover letter generation"""
+        return self.cover_letter_prompt
+
+    def get_customization_analysis_prompt(self) -> ChatPromptTemplate:
+        """Get prompt template for customization analysis"""
+        return self.customization_analysis_prompt
 
     def get_chat_template(
         self, has_context: bool = False, has_history: bool = False

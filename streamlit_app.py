@@ -21,6 +21,7 @@ from app.services.job_processor import job_processor
 from app.services.data_pipeline import data_pipeline
 from app.services.vector_store import vector_store
 from app.services.embeddings import embedding_service
+from app.services.resume_customizer import resume_customizer
 from app.models.resume_data import ResumeData, JobDescription, MatchResult
 from app.core.logging import get_logger
 
@@ -107,7 +108,7 @@ class StreamlitApp:
             st.header("Navigation")
             page = st.radio(
                 "Choose a page:",
-                ["📄 Resume Upload", "📋 Job Management", "🎯 Job Matching", "� Search Candidates", "�📊 Analytics", "� Data Pipeline"]
+                ["📄 Resume Upload", "📋 Job Management", "🎯 Job Matching", "✏️ Resume Customizer", "🔍 Search Candidates", "📊 Analytics", "🔧 Data Pipeline"]
             )
         
         # Route to selected page
@@ -117,6 +118,8 @@ class StreamlitApp:
             self.job_management_page()
         elif page == "🎯 Job Matching":
             self.job_matching_page()
+        elif page == "✏️ Resume Customizer":
+            self.resume_customizer_page()
         elif page == "📊 Analytics":
             self.analytics_page()
         elif page == "🔍 Search Candidates":
@@ -495,7 +498,7 @@ class StreamlitApp:
         
         with col1:
             if st.button("🔍 Search Candidates", type="primary"):
-                if search_input.strip():
+                if search_input and search_input.strip():
                     self.perform_semantic_search(search_input, top_k, show_details)
                 else:
                     st.warning("Please enter a search query")
@@ -508,20 +511,306 @@ class StreamlitApp:
             if st.button("📊 Show Search Stats"):
                 self.show_search_statistics()
     
+    def resume_customizer_page(self):
+        """Resume customization and cover letter generation page"""
+        st.header("✏️ Resume Customizer & Cover Letter Generator")
+        st.markdown("**Customize resumes and generate cover letters based on specific job requirements**")
+        
+        # Get stored resumes and jobs
+        stored_jobs = get_stored_jobs()
+        processed_resumes = get_processed_resumes()
+        
+        if not stored_jobs:
+            st.warning("No job descriptions available. Please add jobs in the Job Management page first.")
+            return
+            
+        if not processed_resumes:
+            st.warning("No processed resumes available. Please upload resumes first.")
+            return
+        
+        # Main tabs
+        tab1, tab2, tab3 = st.tabs(["✏️ Customize Resume", "📝 Generate Cover Letter", "📋 Customization Analysis"])
+        
+        with tab1:
+            self.resume_customization_tab(stored_jobs, processed_resumes)
+        
+        with tab2:
+            self.cover_letter_tab(stored_jobs, processed_resumes)
+            
+        with tab3:
+            self.customization_analysis_tab(stored_jobs, processed_resumes)
+
+    def resume_customization_tab(self, stored_jobs, processed_resumes):
+        """Resume customization interface"""
+        st.subheader("✏️ Customize Resume for Specific Job")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Select Resume**")
+            resume_options = {}
+            for resume in processed_resumes:
+                display_name = f"{resume.get('filename', 'Unknown')}"
+                if resume.get('profile', {}).get('name'):
+                    display_name = f"{resume['profile']['name']} - {resume.get('filename', 'Unknown')}"
+                resume_options[display_name] = resume['id']
+            
+            selected_resume_name = st.selectbox("Choose resume to customize:", list(resume_options.keys()))
+            selected_resume_id = resume_options[selected_resume_name] if selected_resume_name else None
+        
+        with col2:
+            st.markdown("**Select Target Job**")
+            job_options = {}
+            for job in stored_jobs:
+                display_name = f"{job['title']} - {job['company']}"
+                job_options[display_name] = job['id']
+            
+            selected_job_name = st.selectbox("Choose target job:", list(job_options.keys()))
+            selected_job_id = job_options[selected_job_name] if selected_job_name else None
+        
+        if selected_resume_id and selected_job_id:
+            if st.button("🎯 Customize Resume", type="primary"):
+                with st.spinner("Customizing resume..."):
+                    result = self.customize_resume_for_job(selected_resume_id, selected_job_id)
+                    if result and result.get('success'):
+                        st.success("✅ Resume customization completed!")
+                        
+                        # Display customization results
+                        customized_data = result.get('customized_resume', {})
+                        
+                        if customized_data.get('customized_summary'):
+                            st.subheader("📝 Enhanced Summary")
+                            st.text_area("Customized Professional Summary", 
+                                       value=customized_data['customized_summary'], 
+                                       height=100, disabled=True)
+                        
+                        if customized_data.get('emphasized_skills'):
+                            st.subheader("🔍 Emphasized Skills")
+                            skills_text = " • ".join(customized_data['emphasized_skills'])
+                            st.success(f"**Prioritized Skills:** {skills_text}")
+                        
+                        if customized_data.get('keyword_suggestions'):
+                            st.subheader("🏷️ Recommended Keywords")
+                            st.write(", ".join(customized_data['keyword_suggestions']))
+                        
+                        if customized_data.get('customization_summary'):
+                            st.subheader("📋 Customization Summary")
+                            st.info(customized_data['customization_summary'])
+                    else:
+                        st.error(f"❌ Failed to customize resume: {result.get('error', 'Unknown error')}")
+
+    def cover_letter_tab(self, stored_jobs, processed_resumes):
+        """Cover letter generation interface"""
+        st.subheader("📝 Generate Personalized Cover Letter")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Select Candidate Resume**")
+            resume_options = {}
+            for resume in processed_resumes:
+                display_name = f"{resume.get('filename', 'Unknown')}"
+                if resume.get('profile', {}).get('name'):
+                    display_name = f"{resume['profile']['name']} - {resume.get('filename', 'Unknown')}"
+                resume_options[display_name] = resume['id']
+            
+            selected_resume_name = st.selectbox("Choose candidate:", list(resume_options.keys()), key="cover_resume")
+            selected_resume_id = resume_options[selected_resume_name] if selected_resume_name else None
+        
+        with col2:
+            st.markdown("**Select Target Position**")
+            job_options = {}
+            for job in stored_jobs:
+                display_name = f"{job['title']} - {job['company']}"
+                job_options[display_name] = job['id']
+            
+            selected_job_name = st.selectbox("Choose position:", list(job_options.keys()), key="cover_job")
+            selected_job_id = job_options[selected_job_name] if selected_job_name else None
+        
+        if selected_resume_id and selected_job_id:
+            if st.button("📝 Generate Cover Letter", type="primary"):
+                with st.spinner("Generating personalized cover letter..."):
+                    result = self.generate_cover_letter_for_job(selected_resume_id, selected_job_id)
+                    if result and result.get('success'):
+                        st.success("✅ Cover letter generated successfully!")
+                        
+                        # Display cover letter
+                        cover_letter = result.get('cover_letter', '')
+                        
+                        st.subheader(f"📝 Cover Letter for {result.get('job_title', 'Position')}")
+                        st.text_area("Generated Cover Letter", 
+                                   value=cover_letter, 
+                                   height=400, disabled=True)
+                        
+                        # Download option
+                        if st.download_button(
+                            label="📄 Download Cover Letter",
+                            data=cover_letter,
+                            file_name=f"cover_letter_{result.get('candidate_name', 'candidate')}_{result.get('company', 'company')}.txt",
+                            mime="text/plain"
+                        ):
+                            st.success("Cover letter downloaded!")
+                    else:
+                        st.error(f"❌ Failed to generate cover letter: {result.get('error', 'Unknown error')}")
+
+    def customization_analysis_tab(self, stored_jobs, processed_resumes):
+        """Customization analysis and suggestions interface"""
+        st.subheader("📋 Resume Customization Analysis")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Select Resume to Analyze**")
+            resume_options = {}
+            for resume in processed_resumes:
+                display_name = f"{resume.get('filename', 'Unknown')}"
+                if resume.get('profile', {}).get('name'):
+                    display_name = f"{resume['profile']['name']} - {resume.get('filename', 'Unknown')}"
+                resume_options[display_name] = resume['id']
+            
+            selected_resume_name = st.selectbox("Choose resume:", list(resume_options.keys()), key="analysis_resume")
+            selected_resume_id = resume_options[selected_resume_name] if selected_resume_name else None
+        
+        with col2:
+            st.markdown("**Select Target Job**")
+            job_options = {}
+            for job in stored_jobs:
+                display_name = f"{job['title']} - {job['company']}"
+                job_options[display_name] = job['id']
+            
+            selected_job_name = st.selectbox("Choose job:", list(job_options.keys()), key="analysis_job")
+            selected_job_id = job_options[selected_job_name] if selected_job_name else None
+        
+        if selected_resume_id and selected_job_id:
+            if st.button("🔍 Analyze Customization Needs", type="primary"):
+                with st.spinner("Analyzing customization requirements..."):
+                    result = self.analyze_customization_needs(selected_resume_id, selected_job_id)
+                    if result and result.get('success'):
+                        st.success("✅ Analysis completed!")
+                        
+                        suggestions = result.get('suggestions', {})
+                        
+                        # Display skill gaps
+                        if suggestions.get('skill_gaps'):
+                            st.subheader("⚠️ Skill Gaps")
+                            for gap in suggestions['skill_gaps']:
+                                st.error(f"Missing: {gap}")
+                        
+                        # Display experience recommendations
+                        if suggestions.get('experience_recommendations'):
+                            st.subheader("💼 Experience Recommendations")
+                            for rec in suggestions['experience_recommendations']:
+                                st.info(rec)
+                        
+                        # Display keyword suggestions
+                        if suggestions.get('keyword_suggestions'):
+                            st.subheader("🏷️ Keyword Suggestions")
+                            cols = st.columns(3)
+                            for i, keyword in enumerate(suggestions['keyword_suggestions']):
+                                with cols[i % 3]:
+                                    st.success(keyword)
+                        
+                        # Display priority changes
+                        if suggestions.get('priority_changes'):
+                            st.subheader("🎯 Priority Changes")
+                            for change in suggestions['priority_changes']:
+                                priority = change.get('priority', 'medium')
+                                if priority == 'high':
+                                    st.error(f"🔴 HIGH: {change.get('change', '')}")
+                                elif priority == 'medium':
+                                    st.warning(f"🟡 MEDIUM: {change.get('change', '')}")
+                                else:
+                                    st.info(f"🟢 LOW: {change.get('change', '')}")
+                        
+                        # Overall assessment
+                        if suggestions.get('overall_assessment'):
+                            st.subheader("📊 Overall Assessment")
+                            st.markdown(suggestions['overall_assessment'])
+                    else:
+                        st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+
+    def customize_resume_for_job(self, resume_id: str, job_id: str):
+        """Customize resume for specific job"""
+        try:
+            # Get resume and job data
+            resume_data = asyncio.run(self.resume_processor._get_resume_data(resume_id))
+            job_data = asyncio.run(self.job_processor.get_job_data(job_id))
+            
+            if not resume_data or not job_data:
+                return {"success": False, "error": "Failed to retrieve resume or job data"}
+            
+            # Call customization service
+            result = asyncio.run(resume_customizer.customize_resume(resume_data, job_data))
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error customizing resume: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def generate_cover_letter_for_job(self, resume_id: str, job_id: str):
+        """Generate cover letter for specific job"""
+        try:
+            # Get resume and job data
+            resume_data = asyncio.run(self.resume_processor._get_resume_data(resume_id))
+            job_data = asyncio.run(self.job_processor.get_job_data(job_id))
+            
+            if not resume_data or not job_data:
+                return {"success": False, "error": "Failed to retrieve resume or job data"}
+            
+            # Call cover letter generation service
+            result = asyncio.run(resume_customizer.generate_cover_letter(resume_data, job_data))
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error generating cover letter: {str(e)}")
+            return {"success": False, "error": str(e)}
+
+    def analyze_customization_needs(self, resume_id: str, job_id: str):
+        """Analyze customization needs"""
+        try:
+            # Get resume and job data
+            resume_data = asyncio.run(self.resume_processor._get_resume_data(resume_id))
+            job_data = asyncio.run(self.job_processor.get_job_data(job_id))
+            
+            if not resume_data or not job_data:
+                return {"success": False, "error": "Failed to retrieve resume or job data"}
+            
+            # Call analysis service
+            result = asyncio.run(resume_customizer.get_customization_suggestions(resume_data, job_data))
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error analyzing customization needs: {str(e)}")
+            return {"success": False, "error": str(e)}
+
     def analytics_page(self):
         """Analytics and visualization page"""
         st.header("📊 Analytics & Insights")
         
-        # Get analytics data
-        analytics_data = self.get_analytics_data()
-        
-        if not analytics_data:
-            st.info("No data available for analytics. Process some resumes and jobs first.")
-            return
-        
-        # Display analytics
-        self.display_resume_analytics(analytics_data)
-        self.display_matching_analytics(analytics_data)
+        try:
+            # Get analytics data
+            analytics_data = self.get_analytics_data()
+            
+            if not analytics_data:
+                st.info("No data available for analytics. Process some resumes and jobs first.")
+                return
+            
+            # Display analytics with error handling
+            try:
+                self.display_resume_analytics(analytics_data)
+            except Exception as e:
+                st.error(f"Error displaying resume analytics: {str(e)}")
+                logger.error(f"Resume analytics error: {str(e)}")
+            
+            try:
+                self.display_matching_analytics(analytics_data)
+            except Exception as e:
+                st.error(f"Error displaying matching analytics: {str(e)}")
+                logger.error(f"Matching analytics error: {str(e)}")
+                
+        except Exception as e:
+            st.error(f"Error loading analytics data: {str(e)}")
+            logger.error(f"Analytics page error: {str(e)}")
     
     
     def process_uploaded_resumes(self, uploaded_files, progress_bar, status_text, batch_process):
@@ -629,7 +918,7 @@ class StreamlitApp:
                 candidates = vector_store.search_similar(
                     query_embedding=job_embedding,
                     top_k=top_k,
-                    collection_name="resumes"
+                    collection_name="resume_embeddings"
                 )
             
             if not candidates:
@@ -668,7 +957,7 @@ class StreamlitApp:
                 candidates = vector_store.search_similar(
                     query_embedding=query_embedding,
                     top_k=top_k,
-                    collection_name="resumes"
+                    collection_name="resume_embeddings"
                 )
             
             if not candidates:
@@ -716,7 +1005,7 @@ class StreamlitApp:
                     api_results = vector_store.search_similar(
                         query_embedding=api_embedding,
                         top_k=5,
-                        collection_name="resumes"
+                        collection_name="resume_embeddings"
                     )
                     
                     st.success(f"✅ API Gateway search: {len(api_results)} results")
@@ -727,7 +1016,7 @@ class StreamlitApp:
                     mobile_results = vector_store.search_similar(
                         query_embedding=mobile_embedding,
                         top_k=5,
-                        collection_name="resumes"
+                        collection_name="resume_embeddings"
                     )
                     
                     st.success(f"✅ Mobile development search: {len(mobile_results)} results")
@@ -992,7 +1281,7 @@ class StreamlitApp:
                     candidates = vector_store.search_similar(
                         query_embedding=query_embedding,
                         top_k=max_results * 2,  # Get more to filter
-                        collection_name="resumes"
+                        collection_name="resume_embeddings"
                     )
             else:
                 # Get all candidates for skill-only filtering
@@ -1381,7 +1670,7 @@ class StreamlitApp:
     
     def display_resume_analytics(self, analytics_data):
         """Display resume analytics"""
-        if not analytics_data['resumes']:
+        if not analytics_data.get('resumes'):
             return
         
         st.subheader("📊 Resume Analytics")
@@ -1390,35 +1679,61 @@ class StreamlitApp:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Total Resumes", analytics_data['total_resumes'])
+            st.metric("Total Resumes", analytics_data.get('total_resumes', 0))
         
         with col2:
-            avg_experience = sum(r['experience_years'] for r in analytics_data['resumes']) / len(analytics_data['resumes'])
+            # Handle both dictionary and object formats
+            experience_years = []
+            for r in analytics_data.get('resumes', []):
+                if isinstance(r, dict):
+                    exp = r.get('experience_years', 0) or r.get('profile', {}).get('experience_years', 0) or 0
+                else:
+                    exp = getattr(r, 'experience_years', 0) or getattr(getattr(r, 'profile', None), 'experience_years', 0) or 0
+                experience_years.append(exp)
+            
+            avg_experience = sum(experience_years) / len(experience_years) if experience_years else 0
             st.metric("Avg Experience", f"{avg_experience:.1f} years")
         
         with col3:
-            total_skills = sum(len(r['skills']) for r in analytics_data['resumes'])
+            # Handle skills counting
+            total_skills = 0
+            for r in analytics_data.get('resumes', []):
+                if isinstance(r, dict):
+                    skills = r.get('skills', []) or []
+                else:
+                    skills = getattr(r, 'skills', []) or []
+                total_skills += len(skills) if skills else 0
             st.metric("Total Skills", total_skills)
         
         with col4:
-            avg_skills = total_skills / len(analytics_data['resumes'])
+            avg_skills = total_skills / len(analytics_data.get('resumes', [])) if analytics_data.get('resumes') else 0
             st.metric("Avg Skills/Resume", f"{avg_skills:.1f}")
         
         # Experience distribution
-        experience_data = [r['experience_years'] for r in analytics_data['resumes']]
-        fig_exp = px.histogram(
-            x=experience_data,
-            title="Experience Distribution",
-            nbins=10,
-            labels={'x': 'Years of Experience', 'y': 'Number of Candidates'}
-        )
-        st.plotly_chart(fig_exp, use_container_width=True)
+        if experience_years:
+            fig_exp = px.histogram(
+                x=experience_years,
+                title="Experience Distribution",
+                nbins=10,
+                labels={'x': 'Years of Experience', 'y': 'Number of Candidates'}
+            )
+            st.plotly_chart(fig_exp, use_container_width=True)
         
         # Top skills
         all_skills = {}
-        for resume in analytics_data['resumes']:
-            for skill in resume['skills']:
-                all_skills[skill] = all_skills.get(skill, 0) + 1
+        for resume in analytics_data.get('resumes', []):
+            # Handle both dictionary and object formats
+            if isinstance(resume, dict):
+                resume_skills = resume.get('skills', []) or []
+            else:
+                resume_skills = getattr(resume, 'skills', []) or []
+            
+            if isinstance(resume_skills, list):
+                for skill in resume_skills:
+                    if skill:  # Skip empty skills
+                        skill_name = str(skill).strip()
+                        if skill_name:
+                            all_skills[skill_name] = all_skills.get(skill_name, 0) + 1
         
         top_skills = sorted(all_skills.items(), key=lambda x: x[1], reverse=True)[:15]
         skills_df = pd.DataFrame(top_skills, columns=['Skill', 'Count'])
@@ -1452,7 +1767,16 @@ class StreamlitApp:
             all_skills = set()
             
             for resume in resumes:
-                all_skills.update(resume['skills'])
+                # Handle both dictionary and object formats
+                if isinstance(resume, dict):
+                    resume_skills = resume.get('skills', []) or []
+                else:
+                    resume_skills = getattr(resume, 'skills', []) or []
+                
+                if isinstance(resume_skills, list):
+                    for skill in resume_skills:
+                        if skill:
+                            all_skills.add(str(skill).strip())
             
             return sorted(list(all_skills))
         
@@ -1472,7 +1796,7 @@ class StreamlitApp:
                     candidates = vector_store.search_similar(
                         query_embedding=query_embedding,
                         top_k=20,
-                        collection_name="resumes"
+                        collection_name="resume_embeddings"
                     )
             else:
                 # Get all candidates for skill-only filtering

@@ -144,7 +144,7 @@ class JobProcessor:
             similar_resumes = self.vector_store.search_similar(
                 query_embedding=job_data.embedding,
                 top_k=top_k,
-                collection_name="resumes"  # Search in resumes collection
+                collection_name="resume_embeddings"  # Use the correct collection name
             )
             
             # Enhance results with additional data
@@ -178,7 +178,11 @@ class JobProcessor:
         try:
             # Check memory cache first
             if job_id in self.stored_jobs:
-                return self.stored_jobs[job_id]
+                job_data = self.stored_jobs[job_id]
+                # Ensure embedding is present - regenerate if needed
+                if job_data.embedding is None and job_data.raw_text:
+                    job_data.embedding = self.embedding_service.generate_embedding(job_data.raw_text)
+                return job_data
             
             # Load from file
             job_file = self.jobs_dir / f"{job_id}.json"
@@ -187,6 +191,11 @@ class JobProcessor:
                     job_dict = json.load(f)
                 
                 job_data = JobDescription.from_dict(job_dict)
+                
+                # Regenerate embedding from raw text if needed
+                if job_data.raw_text:
+                    job_data.embedding = self.embedding_service.generate_embedding(job_data.raw_text)
+                
                 self.stored_jobs[job_id] = job_data
                 return job_data
             

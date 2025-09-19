@@ -1,39 +1,40 @@
 # FastAPI and web framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-pydantic==2.5.0
-pydantic-settings==2.1.0
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.12
+pydantic==2.10.3
+pydantic-settings==2.7.0
+structlog==25.4.0
 
 # Streamlit web interface
-streamlit==1.29.0
-plotly==5.17.0
-pandas==2.1.4
+streamlit==1.41.0
+plotly==5.24.1
+pandas==2.2.3
 
 # LangChain and LLM integration
-langchain==0.1.0
-langchain-openai==0.0.5
-langchain-community==0.0.10
-langchain-core==0.1.9
-openai==1.6.1
+langchain
+langchain-openai
+langchain-community
+langchain-core
+openai
 
 # Vector database and embeddings
-chromadb==0.4.18
-sentence-transformers==2.2.2
+chromadb
+sentence-transformers
 
 # Resume parsing
-pypdf==3.17.4
-python-docx==1.1.0
+pypdf==5.1.0
+python-docx==1.1.2
 
 # Utilities
-numpy==1.24.3
-python-dotenv==1.0.0
+numpy==2.2.1
+python-dotenv==1.0.1
 
 # Development and testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-httpx==0.25.2
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1
 
 # CLI utilities (optional)
-click==8.1.7
-rich==13.7.0
+click==8.1.8
+rich==13.9.4
