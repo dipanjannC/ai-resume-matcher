@@ -14,6 +14,7 @@ pandas==2.2.3
 # LangChain and LLM integration
 langchain
 langchain-openai
+langchain-groq
 langchain-community
 langchain-core
 openai
@@ -21,10 +22,14 @@ openai
 # Vector database and embeddings
 chromadb
 sentence-transformers
+scikit-learn
 
 # Resume parsing
 pypdf==5.1.0
 python-docx==1.1.2
+
+# PDF generation
+reportlab==4.0.8
 
 # Utilities
 numpy==2.2.1
@@ -38,3 +43,7 @@ httpx==0.28.1
 # CLI utilities (optional)
 click==8.1.8
 rich==13.9.4
+
+# Web scraping and HTTP requests
+requests==2.31.0
+urllib3==2.0.7

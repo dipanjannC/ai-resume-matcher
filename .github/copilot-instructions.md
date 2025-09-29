@@ -1,5 +1,30 @@
-# AI Resume Matcher - Copilot Instructions
+# AI Resume Matcher - Cop## Development Workflows
 
+### Terminal Output Workaround
+**IMPORTANT**: Due to a Copilot bug with terminal output reading, always pipe command output to a file:
+```bash
+# Always use this pattern for terminal commands
+command_name > output.txt 2>&1
+# Then read the output.txt file to see results
+# Overwrite each time to prevent file growth
+```
+
+### Running the Application
+```bash
+# Streamlit web interface (primary interface)
+python run_streamlit.py > output.txt 2>&1
+
+# FastAPI server
+python app/main.py > output.txt 2>&1
+
+# Interactive CLI demo
+python quick_demo.py > output.txt 2>&1
+
+# Bulk testing
+python test_job_matching.py > output.txt 2>&1
+```
+
+### Environment Setup
 ## Architecture Overview
 
 This is a **LangChain-powered resume matching system** using file-based storage (no traditional database). The core pattern is:
@@ -38,6 +63,15 @@ python quick_demo.py
 
 # Bulk testing
 python test_job_matching.py
+```
+
+### Terminal Output Workaround
+**IMPORTANT**: Due to a Copilot bug with terminal output reading, always pipe command output to a file:
+```bash
+# Always use this pattern for terminal commands
+command_name > output.txt 2>&1
+# Then read the output.txt file to see results
+# Overwrite each time to prevent file growth
 ```
 
 ### Environment Setup

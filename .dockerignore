@@ -1,0 +1,17 @@
+# Docker deployment logs
+logs/
+*.log
+
+# Data directories (persistent but not tracked)
+data/resumes/*.json
+data/jobs/*.json
+data/results/*
+data/temp/*
+data/vectordb/*
+
+# Keep structure files
+!data/resumes/.gitkeep
+!data/jobs/.gitkeep
+!data/results/.gitkeep
+!data/temp/.gitkeep
+!data/vectordb/.gitkeep

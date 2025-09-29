@@ -2,17 +2,18 @@
 
 **LangChain-Powered Intelligent Resume Matching System**
 
-A simplified, human-readable AI resume matching system that uses LangChain agents to intelligently parse resumes and match candidates to job descriptions. No complex database setup required!
+A professional, production-ready AI resume matching system that uses LangChain agents to intelligently parse resumes and match candidates to job descriptions. Features robust error handling, comprehensive fallback mechanisms, and no complex database setup required.
 
-## 🎯 **Key Features**
+## ✨ **Key Features**
 
-- **🌐 Streamlit Web Interface**: Interactive web application with visualizations
-- **🤖 LangChain Agents**: Intelligent resume and job description parsing
-- **📊 Real-time Analytics**: Charts, graphs, and data insights with Plotly
-- **🎯 Job Management**: Store job descriptions and find top candidates
-- **� Vector Search**: Semantic similarity using ChromaDB multi-collections
-- **🎨 Interactive Demo**: Rich CLI and web interfaces for testing
-- **📈 Visualization**: Match scoring, candidate comparison, and analytics
+- **🌐 Professional Web Interface**: Clean Streamlit UI with tabbed navigation
+- **🤖 Enhanced AI Processing**: LangChain agents with comprehensive fallbacks
+- **�️ Bulletproof Parsing**: Multi-method PDF/DOCX extraction with error recovery
+- **🔍 Smart Vector Search**: ChromaDB with semantic similarity matching
+- **📊 Rich Analytics**: Real-time charts and insights with Plotly
+- **💼 Job Management**: Professional workflow for job posting and candidate matching
+- **� Intelligent Matching**: AI-powered scoring with detailed analysis
+- **📈 Data Visualization**: Comprehensive reporting and candidate comparison
 
 ## 🚀 **Quick Start**
 
@@ -26,9 +27,10 @@ pip install -r requirements.txt
 export OPENAI_API_KEY=your_openai_api_key_here
 ```
 
-### 3. **Run Interactive Demo**
+### 3. **Run Application**
 ```bash
-python demo_example.py
+python run_streamlit.py
+# Visit http://localhost:8501
 ```
 
 ## 🎮 **Usage Modes**
@@ -47,7 +49,7 @@ python run_streamlit.py
 
 ### **🎯 Interactive Demo (CLI)**
 ```bash
-python demo_example.py
+python quick_demo.py
 ```
 - Upload and process resumes
 - Analyze job descriptions  

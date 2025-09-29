@@ -43,14 +43,60 @@ class VectorStore:
             logger.error("Failed to initialize ChromaDB", error=str(e))
             raise VectorStoreException(f"Failed to initialize vector store: {str(e)}")
     
+    def _ensure_collection_health(self) -> bool:
+        """Verify collection is healthy and recreate if needed"""
+        try:
+            if not self.collection:
+                logger.warning("Collection is None, reinitializing...")
+                self._initialize_client()
+                if not self.collection:
+                    logger.error("Failed to initialize collection")
+                    return False
+                return True
+            
+            # Try to query the collection to verify it's accessible
+            try:
+                self.collection.peek(limit=1)
+                return True
+            except Exception as e:
+                logger.warning(f"Collection health check failed: {e}, reinitializing...")
+                self._initialize_client()
+                if not self.collection:
+                    logger.error("Failed to reinitialize collection")
+                    return False
+                return True
+                
+        except Exception as e:
+            logger.error(f"Collection health check error: {e}")
+            return False
+    
     def add_resume(self, candidate_id: str, embedding: List[float], 
                    document: str, metadata: Dict[str, Any]) -> str:
         """Add a resume embedding to the vector store"""
         try:
+            # Ensure collection is healthy and available
+            if not self._ensure_collection_health():
+                raise VectorStoreException("Failed to ensure collection health")
+            
+            # Double-check collection is not None after health check
             if not self.collection:
-                raise VectorStoreException("Collection not initialized")
+                raise VectorStoreException("Collection is None after health check")
                 
             doc_id = str(candidate_id)
+            
+            # Debug logging to understand the embedding format
+            logger.debug(f"Adding embedding for {candidate_id}: type={type(embedding)}, length={len(embedding) if hasattr(embedding, '__len__') else 'unknown'}")
+            if hasattr(embedding, '__len__') and len(embedding) > 0:
+                logger.debug(f"First few elements: {embedding[:3] if len(embedding) >= 3 else embedding}")
+                logger.debug(f"Element types: {[type(x) for x in (embedding[:3] if len(embedding) >= 3 else embedding)]}")
+            
+            # Ensure embedding is a proper list of floats
+            if not isinstance(embedding, list):
+                logger.warning(f"Converting embedding from {type(embedding)} to list")
+                embedding = list(embedding)
+            
+            # Ensure all elements are floats
+            embedding = [float(x) for x in embedding]
             
             self.collection.add(
                 embeddings=[embedding],
@@ -80,6 +126,15 @@ class VectorStore:
             
             if not collection:
                 raise VectorStoreException("Collection not available")
+            
+            # Ensure query embedding is in correct format
+            logger.debug(f"Search query embedding: type={type(query_embedding)}, length={len(query_embedding) if hasattr(query_embedding, '__len__') else 'unknown'}")
+            if not isinstance(query_embedding, list):
+                logger.warning(f"Converting query embedding from {type(query_embedding)} to list")
+                query_embedding = list(query_embedding)
+            
+            # Ensure all elements are floats
+            query_embedding = [float(x) for x in query_embedding]
                 
             where_clause = filter_metadata if filter_metadata else None
             
@@ -194,8 +249,8 @@ class VectorStore:
                         candidate_id=candidate_id, error=str(e))
             return False
     
-    def get_collection_stats(self) -> Dict[str, Any]:
-        """Get statistics about the collection"""
+    def get_basic_collection_stats(self) -> Dict[str, Any]:
+        """Get basic statistics about the main collection"""
         try:
             if not self.collection:
                 return {'total_resumes': 0, 'collection_name': self.collection_name}
@@ -290,6 +345,82 @@ class VectorStore:
             logger.error(f"Failed to update document in {collection_name}", 
                         document_id=document_id, error=str(e))
             return False
+    
+    def reset_collections(self) -> bool:
+        """Reset/Clear all collections in the vector database"""
+        try:
+            if not self.client:
+                logger.warning("ChromaDB client not initialized, initializing now...")
+                self._initialize_client()
+            
+            if not self.client:
+                logger.error("Failed to initialize ChromaDB client")
+                return False
+            
+            # Get all collection names
+            collections = self.client.list_collections()
+            
+            for collection in collections:
+                try:
+                    # Delete the collection
+                    self.client.delete_collection(collection.name)
+                    logger.info(f"Deleted collection: {collection.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete collection {collection.name}: {e}")
+            
+            # Force reinitialize to ensure clean state
+            self.collection = None
+            
+            # Recreate the main resume embeddings collection
+            try:
+                self.collection = self.client.get_or_create_collection(
+                    name=self.collection_name,
+                    metadata={"description": "Resume embeddings for similarity search"}
+                )
+                logger.info(f"Successfully recreated main collection: {self.collection_name}")
+            except Exception as e:
+                logger.error(f"Failed to recreate main collection: {e}")
+                # Try to reinitialize completely
+                self._initialize_client()
+            
+            logger.info("Successfully reset all vector collections")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to reset collections: {e}")
+            # Try to reinitialize as fallback
+            try:
+                self._initialize_client()
+                logger.info("Fallback reinitialization successful")
+                return True
+            except Exception as fallback_e:
+                logger.error(f"Fallback reinitialization also failed: {fallback_e}")
+                return False
+    
+    def get_collection_stats(self) -> Dict[str, Any]:
+        """Get statistics about collections"""
+        try:
+            if not self.client:
+                return {"error": "Client not initialized"}
+            
+            stats = {}
+            collections = self.client.list_collections()
+            
+            for collection in collections:
+                try:
+                    count = collection.count()
+                    stats[collection.name] = {
+                        "count": count,
+                        "metadata": collection.metadata
+                    }
+                except Exception as e:
+                    stats[collection.name] = {"error": str(e)}
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Failed to get collection stats: {e}")
+            return {"error": str(e)}
 
 
 # Create global instance

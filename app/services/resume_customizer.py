@@ -44,10 +44,10 @@ class ResumeCustomizerService:
             context = {
                 "original_resume": self._format_resume_for_prompt(resume_data),
                 "job_description": self._format_job_for_prompt(job_description),
-                "job_title": job_description.title or "N/A",
-                "company": job_description.company or "N/A",
-                "required_skills": ", ".join(job_description.required_skills) if job_description.required_skills else "",
-                "experience_required": job_description.experience_years or 0
+                "job_title": getattr(job_description, 'title', '') or "N/A",
+                "company": getattr(job_description, 'company', '') or "N/A",
+                "required_skills": ", ".join(getattr(job_description, 'required_skills', []) or []),
+                "experience_required": getattr(job_description, 'experience_years', 0) or 0
             }
             
             # Generate customized resume using LangChain
@@ -90,21 +90,21 @@ class ResumeCustomizerService:
             # Prepare context for LLM
             all_skills = []
             if resume_data.skills:
-                if resume_data.skills.technical:
+                if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical:
                     all_skills.extend(resume_data.skills.technical)
-                if resume_data.skills.soft:
+                if hasattr(resume_data.skills, 'soft') and resume_data.skills.soft:
                     all_skills.extend(resume_data.skills.soft)
             
             context = {
-                "candidate_name": resume_data.profile.name or "Dear Hiring Manager",
-                "candidate_experience": resume_data.summary or "",
-                "candidate_skills": ", ".join(all_skills),
-                "candidate_experience_years": resume_data.experience.total_years or 0,
-                "job_title": job_description.title,
-                "company": job_description.company,
-                "job_requirements": job_description.raw_text[:1000] if job_description.raw_text else "",  # First 1000 chars
-                "required_skills": ", ".join(job_description.required_skills) if job_description.required_skills else "",
-                "location": job_description.location or "Remote"
+                "candidate_name": getattr(resume_data.profile, 'name', '') or "Dear Hiring Manager",
+                "candidate_experience": getattr(resume_data, 'summary', '') or "",
+                "candidate_skills": ", ".join(all_skills) if all_skills else "",
+                "candidate_experience_years": getattr(resume_data.experience, 'total_years', 0) or 0,
+                "job_title": getattr(job_description, 'title', '') or "",
+                "company": getattr(job_description, 'company', '') or "",
+                "job_requirements": (getattr(job_description, 'raw_text', '') or "")[:1000],
+                "required_skills": ", ".join(getattr(job_description, 'required_skills', []) or []),
+                "location": getattr(job_description, 'location', '') or "Remote"
             }
             
             # Generate cover letter using LangChain
@@ -147,16 +147,18 @@ class ResumeCustomizerService:
             # Prepare context for analysis
             all_skills = []
             if resume_data.skills:
-                all_skills.extend(resume_data.skills.technical or [])
-                all_skills.extend(resume_data.skills.soft or [])
+                if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical:
+                    all_skills.extend(resume_data.skills.technical)
+                if hasattr(resume_data.skills, 'soft') and resume_data.skills.soft:
+                    all_skills.extend(resume_data.skills.soft)
             
             context = {
-                "resume_skills": ", ".join(all_skills),
-                "resume_experience": resume_data.experience.total_years or 0,
-                "resume_summary": resume_data.summary or "",
-                "job_requirements": ", ".join(job_description.required_skills) if job_description.required_skills else "",
-                "job_experience_required": job_description.experience_years or 0,
-                "job_description": job_description.raw_text[:800] if job_description.raw_text else ""  # First 800 chars
+                "resume_skills": ", ".join(all_skills) if all_skills else "",
+                "resume_experience": getattr(resume_data.experience, 'total_years', 0) or 0,
+                "resume_summary": getattr(resume_data, 'summary', '') or "",
+                "job_requirements": ", ".join(getattr(job_description, 'required_skills', []) or []),
+                "job_experience_required": getattr(job_description, 'experience_years', 0) or 0,
+                "job_description": (getattr(job_description, 'raw_text', '') or "")[:800]
             }
             
             # Generate suggestions using LangChain
@@ -184,74 +186,81 @@ class ResumeCustomizerService:
         """Format resume data for LLM prompt"""
         all_skills = []
         if resume_data.skills:
-            all_skills.extend(resume_data.skills.technical or [])
-            all_skills.extend(resume_data.skills.soft or [])
+            if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical:
+                all_skills.extend(resume_data.skills.technical)
+            if hasattr(resume_data.skills, 'soft') and resume_data.skills.soft:
+                all_skills.extend(resume_data.skills.soft)
         
         return f"""
-Name: {resume_data.profile.name or 'N/A'}
-Email: {resume_data.profile.email or 'N/A'}
-Phone: {resume_data.profile.phone or 'N/A'}
-Title: {resume_data.profile.title or 'N/A'}
-Location: {resume_data.profile.location or 'N/A'}
-Summary: {resume_data.summary or 'N/A'}
-Experience Years: {resume_data.experience.total_years or 0}
+Name: {getattr(resume_data.profile, 'name', '') or 'N/A'}
+Email: {getattr(resume_data.profile, 'email', '') or 'N/A'}
+Phone: {getattr(resume_data.profile, 'phone', '') or 'N/A'}
+Title: {getattr(resume_data.profile, 'title', '') or 'N/A'}
+Location: {getattr(resume_data.profile, 'location', '') or 'N/A'}
+Summary: {getattr(resume_data, 'summary', '') or 'N/A'}
+Experience Years: {getattr(resume_data.experience, 'total_years', 0) or 0}
 
 Skills: {', '.join(all_skills) if all_skills else 'N/A'}
-Technical Skills: {', '.join(resume_data.skills.technical) if resume_data.skills.technical else 'N/A'}
-Soft Skills: {', '.join(resume_data.skills.soft) if resume_data.skills.soft else 'N/A'}
-Certifications: {', '.join(resume_data.skills.certifications) if resume_data.skills.certifications else 'N/A'}
+Technical Skills: {', '.join(getattr(resume_data.skills, 'technical', []) or []) if hasattr(resume_data.skills, 'technical') else 'N/A'}
+Soft Skills: {', '.join(getattr(resume_data.skills, 'soft', []) or []) if hasattr(resume_data.skills, 'soft') else 'N/A'}
+Certifications: {', '.join(getattr(resume_data.skills, 'certifications', []) or []) if hasattr(resume_data.skills, 'certifications') else 'N/A'}
 
 Work Experience:
-{self._format_experience_for_prompt(resume_data.experience)}
+{self._format_experience_for_prompt(resume_data.experience) if resume_data.experience else 'N/A'}
 
 Tools & Technologies:
-{self._format_tools_for_prompt(resume_data.tools_libraries)}
+{self._format_tools_for_prompt(resume_data.tools_libraries) if resume_data.tools_libraries else 'N/A'}
 
-Key Strengths: {', '.join(resume_data.key_strengths) if resume_data.key_strengths else 'N/A'}
+Key Strengths: {', '.join(getattr(resume_data, 'key_strengths', []) or []) if hasattr(resume_data, 'key_strengths') else 'N/A'}
         """.strip()
     
     def _format_job_for_prompt(self, job_description: JobDescription) -> str:
         """Format job description for LLM prompt"""
         return f"""
-Job Title: {job_description.title or 'N/A'}
-Company: {job_description.company or 'N/A'}
-Location: {job_description.location or 'N/A'}
-Experience Required: {job_description.experience_years or 0} years
-Required Skills: {', '.join(job_description.required_skills) if job_description.required_skills else 'N/A'}
-Job Summary: {job_description.summary or 'N/A'}
+Job Title: {getattr(job_description, 'title', '') or 'N/A'}
+Company: {getattr(job_description, 'company', '') or 'N/A'}
+Location: {getattr(job_description, 'location', '') or 'N/A'}
+Experience Required: {getattr(job_description, 'experience_years', 0) or 0} years
+Required Skills: {', '.join(getattr(job_description, 'required_skills', []) or [])}
+Job Summary: {getattr(job_description, 'summary', '') or 'N/A'}
 
 Full Description:
-{job_description.raw_text[:1000] if job_description.raw_text else 'N/A'}...
+{(getattr(job_description, 'raw_text', '') or 'N/A')[:1000]}...
         """.strip()
     
     def _format_experience_for_prompt(self, experience_info) -> str:
         """Format work experience for prompt"""
-        if not experience_info or not hasattr(experience_info, 'roles'):
+        if not experience_info:
             return "No work experience listed"
         
         formatted = []
         
         # Add total experience
-        if experience_info.total_years:
-            formatted.append(f"Total Experience: {experience_info.total_years} years")
+        total_years = getattr(experience_info, 'total_years', 0)
+        if total_years:
+            formatted.append(f"Total Experience: {total_years} years")
         
         # Add roles and companies
-        if experience_info.roles:
-            formatted.append(f"Roles: {', '.join(experience_info.roles)}")
+        roles = getattr(experience_info, 'roles', []) or []
+        if roles:
+            formatted.append(f"Roles: {', '.join(roles)}")
         
-        if experience_info.companies:
-            formatted.append(f"Companies: {', '.join(experience_info.companies)}")
+        companies = getattr(experience_info, 'companies', []) or []
+        if companies:
+            formatted.append(f"Companies: {', '.join(companies)}")
         
         # Add key responsibilities
-        if experience_info.responsibilities:
+        responsibilities = getattr(experience_info, 'responsibilities', []) or []
+        if responsibilities:
             formatted.append("Key Responsibilities:")
-            for resp in experience_info.responsibilities[:3]:  # Limit to top 3
+            for resp in responsibilities[:3]:  # Limit to top 3
                 formatted.append(f"• {resp}")
         
         # Add achievements
-        if experience_info.achievements:
+        achievements = getattr(experience_info, 'achievements', []) or []
+        if achievements:
             formatted.append("Key Achievements:")
-            for achievement in experience_info.achievements[:3]:  # Limit to top 3
+            for achievement in achievements[:3]:  # Limit to top 3
                 formatted.append(f"• {achievement}")
         
         return "\n".join(formatted) if formatted else "No work experience details available"
@@ -263,17 +272,21 @@ Full Description:
         
         formatted = []
         
-        if hasattr(tools_libraries, 'programming_languages') and tools_libraries.programming_languages:
-            formatted.append(f"Programming Languages: {', '.join(tools_libraries.programming_languages)}")
+        programming_languages = getattr(tools_libraries, 'programming_languages', []) or []
+        if programming_languages:
+            formatted.append(f"Programming Languages: {', '.join(programming_languages)}")
         
-        if hasattr(tools_libraries, 'frameworks') and tools_libraries.frameworks:
-            formatted.append(f"Frameworks: {', '.join(tools_libraries.frameworks)}")
+        frameworks = getattr(tools_libraries, 'frameworks', []) or []
+        if frameworks:
+            formatted.append(f"Frameworks: {', '.join(frameworks)}")
         
-        if hasattr(tools_libraries, 'tools') and tools_libraries.tools:
-            formatted.append(f"Tools: {', '.join(tools_libraries.tools)}")
+        tools = getattr(tools_libraries, 'tools', []) or []
+        if tools:
+            formatted.append(f"Tools: {', '.join(tools)}")
         
-        if hasattr(tools_libraries, 'databases') and tools_libraries.databases:
-            formatted.append(f"Databases: {', '.join(tools_libraries.databases)}")
+        databases = getattr(tools_libraries, 'databases', []) or []
+        if databases:
+            formatted.append(f"Databases: {', '.join(databases)}")
         
         if hasattr(tools_libraries, 'cloud_platforms') and tools_libraries.cloud_platforms:
             formatted.append(f"Cloud Platforms: {', '.join(tools_libraries.cloud_platforms)}")
