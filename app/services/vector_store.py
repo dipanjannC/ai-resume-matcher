@@ -1,5 +1,5 @@
 import chromadb
-from chromadb.config import Settings as ChromaSettings
+import os
 from typing import List, Dict, Optional, Any, Union
 import uuid
 from app.core.config import settings
@@ -18,19 +18,20 @@ class VectorStore:
         self._initialize_client()
     
     def _initialize_client(self):
-        """Initialize ChromaDB client"""
+        """Initialize ChromaDB client with improved error handling"""
         try:
             logger.info("Initializing ChromaDB client", 
                        persist_directory=settings.CHROMADB_PERSIST_DIRECTORY)
             
+            # Create directory if it doesn't exist
+            os.makedirs(settings.CHROMADB_PERSIST_DIRECTORY, exist_ok=True)
+            
+            # Initialize client with updated ChromaDB v1.3.0 API
             self.client = chromadb.PersistentClient(
-                path=settings.CHROMADB_PERSIST_DIRECTORY,
-                settings=ChromaSettings(
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
+                path=settings.CHROMADB_PERSIST_DIRECTORY
             )
             
+            # Get or create collection with simple error handling
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 metadata={"description": "Resume embeddings for similarity search"}
