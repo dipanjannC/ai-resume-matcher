@@ -452,23 +452,140 @@ class StreamlitApp:
         
         return job_info
         
+    def render_sidebar(self):
+        """Render the sidebar with navigation and core actions"""
+        with st.sidebar:
+            st.title("🤖 AI Resume Matcher")
+            st.markdown("---")
+            
+            # --- API Configuration ---
+            with st.expander("🔑 API Configuration", expanded=False):
+                import os
+                
+                # OpenAI
+                openai_key = st.text_input("OpenAI API Key", type="password", value=os.getenv("OPENAI_API_KEY", ""), key="sidebar_openai_key")
+                if openai_key:
+                    os.environ["OPENAI_API_KEY"] = openai_key
+                
+                # Gemini
+                gemini_key = st.text_input("Gemini API Key", type="password", value=os.getenv("GEMINI_API_KEY", ""), key="sidebar_gemini_key")
+                if gemini_key:
+                    os.environ["GEMINI_API_KEY"] = gemini_key
+                    
+                # Groq
+                groq_key = st.text_input("Groq API Key", type="password", value=os.getenv("GROQ_API_KEY", ""), key="sidebar_groq_key")
+                if groq_key:
+                    os.environ["GROQ_API_KEY"] = groq_key
+            
+            # --- Navigation ---
+            st.header("Navigation")
+            
+            # Handle page selection with session state to allow programmatic navigation
+            if 'selected_main_page' not in st.session_state:
+                st.session_state.selected_main_page = "📄 Resume Upload"
+                
+            page = st.radio(
+                "Choose a page:",
+                ["📄 Resume Upload", "📋 Job Management", "🎯 Job Matching", "✏️ Resume Customizer", "📊 Analytics"],
+                key="nav_radio",
+                index=["📄 Resume Upload", "📋 Job Management", "🎯 Job Matching", "✏️ Resume Customizer", "📊 Analytics"].index(st.session_state.selected_main_page) if st.session_state.selected_main_page in ["📄 Resume Upload", "📋 Job Management", "🎯 Job Matching", "✏️ Resume Customizer", "📊 Analytics"] else 0
+            )
+            
+            # Update session state if changed via radio
+            if page != st.session_state.selected_main_page:
+                st.session_state.selected_main_page = page
+                st.rerun()
+            
+            st.markdown("---")
+            
+            # --- Contextual Sidebar Content ---
+            if page == "📄 Resume Upload":
+                self.sidebar_resume_upload()
+            elif page == "📋 Job Management":
+                self.sidebar_add_job()
+                
+            return page
+
+    def sidebar_resume_upload(self):
+        """Sidebar component for resume upload"""
+        st.header("📤 Upload Resumes")
+        
+        uploaded_files = st.file_uploader(
+            "Choose resume files",
+            type=['pdf', 'docx', 'txt'],
+            accept_multiple_files=True,
+            help="Supported: PDF, DOCX, TXT",
+            key="sidebar_uploader"
+        )
+        
+        if uploaded_files:
+            st.session_state.sidebar_uploaded_files = uploaded_files
+            
+            st.markdown("### ⚙️ Options")
+            st.checkbox("Batch process", value=True, key="sidebar_batch_process")
+            st.checkbox("Overwrite existing", value=False, key="sidebar_overwrite")
+            
+            if st.button("🚀 Process Resumes", type="primary", use_container_width=True):
+                st.session_state.trigger_processing = True
+        else:
+            if 'sidebar_uploaded_files' in st.session_state:
+                del st.session_state.sidebar_uploaded_files
+
+    def sidebar_add_job(self):
+        """Sidebar component for adding jobs"""
+        st.header("➕ Add New Job")
+        
+        # We'll implement the full form logic here or call a helper
+        # For now, let's just put a placeholder or the actual form if it fits
+        # Since the form is complex, we might want to keep it simple here or move the whole form
+        
+        with st.expander("🔗 Import from URL", expanded=True):
+            job_url = st.text_input("Job URL", placeholder="https://...", key="sidebar_job_url")
+            if st.button("🤖 Extract", key="sidebar_extract_btn", use_container_width=True):
+                if job_url:
+                    with st.spinner("Extracting..."):
+                        extraction_result = self.extract_job_from_url(job_url)
+                        if extraction_result.get("success"):
+                            st.session_state.url_job_title = extraction_result.get("title", "")
+                            st.session_state.url_company = extraction_result.get("company", "")
+                            st.session_state.url_description = extraction_result.get("description", "")
+                            st.session_state.url_location = extraction_result.get("location", "")
+                            st.session_state.url_experience = extraction_result.get("experience", "")
+                            st.success("Extracted!")
+                        else:
+                            st.error("Failed to extract")
+        
+        st.markdown("---")
+        st.markdown("**📝 Job Details**")
+        
+        with st.form("sidebar_job_form", clear_on_submit=True):
+            job_title = st.text_input("Job Title", value=getattr(st.session_state, 'url_job_title', ''))
+            company = st.text_input("Company", value=getattr(st.session_state, 'url_company', ''))
+            location = st.text_input("Location", value=getattr(st.session_state, 'url_location', ''))
+            experience = st.number_input("Experience (yrs)", min_value=0, value=3)
+            
+            description = st.text_area("Description", value=getattr(st.session_state, 'url_description', ''), height=150)
+            
+            if st.form_submit_button("💾 Save Job", type="primary", use_container_width=True):
+                if job_title and description:
+                    self.save_job_description(job_title, company, description, experience, location, "")
+                    st.success("Job saved!")
+                    # Clear session state
+                    for key in ['url_job_title', 'url_company', 'url_description', 'url_location', 'url_experience']:
+                        if hasattr(st.session_state, key):
+                            delattr(st.session_state, key)
+                else:
+                    st.error("Title & Desc required")
+
     def run(self):
         """Main application entry point"""
-        st.title("🤖 AI Resume Matcher")
-        st.markdown("**LangChain-Powered Intelligent Resume Matching System**")
-        
         # Initialize data if needed
         initialize_data()
         
-        # Sidebar navigation
-        with st.sidebar:
-            st.header("Navigation")
-            page = st.radio(
-                "Choose a page:",
-                ["📄 Resume Upload", "📋 Job Management", "🎯 Job Matching", "✏️ Resume Customizer", "📊 Analytics"]
-            )
+        # Render sidebar and get selected page
+        page = self.render_sidebar()
         
-        # Route to selected page
+        # Main content area
         if page == "📄 Resume Upload":
             self.resume_upload_page()
         elif page == "📋 Job Management":
@@ -489,28 +606,28 @@ class StreamlitApp:
         # System status check
         self.check_system_status()
         
-        # File upload with better help text
-        st.markdown("### 📤 Upload Resume Files")
-        uploaded_files = st.file_uploader(
-            "Choose resume files to upload",
-            type=['pdf', 'docx', 'txt'],
-            accept_multiple_files=True,
-            help="""
-            **Supported formats:**
-            • PDF files (.pdf)
-            • Word documents (.docx)  
-            • Plain text files (.txt)
-            
-            **Tips for best results:**
-            • Ensure text is readable (not scanned images)
-            • Include contact information, skills, and experience
-            • Use standard resume format
-            """
-        )
+        # Check for files from sidebar
+        uploaded_files = st.session_state.get('sidebar_uploaded_files', [])
         
-        if uploaded_files:
+        if not uploaded_files:
+            st.info("👈 Please upload resume files using the sidebar.")
+            
+            # Show supported formats info
+            st.markdown("""
+            ### Supported Formats
+            • **PDF** (.pdf)
+            • **Word** (.docx)
+            • **Text** (.txt)
+            
+            ### Instructions
+            1. Use the **Upload Resumes** section in the sidebar
+            2. Select one or multiple files
+            3. Click **Process Resumes** to start analysis
+            """)
+        else:
+            st.markdown(f"### 📋 Selected Files ({len(uploaded_files)})")
+            
             # File validation and preview
-            st.markdown("### 📋 File Validation")
             valid_files = []
             
             for file in uploaded_files:
@@ -526,21 +643,22 @@ class StreamlitApp:
                     valid_files.append(file)
             
             if valid_files:
-                col1, col2 = st.columns([1, 1])
-                
-                with col1:
-                    st.subheader("📊 Processing Status")
-                    progress_bar = st.progress(0)
-                    status_text = st.empty()
+                # Check if processing triggered
+                if st.session_state.get('trigger_processing', False):
+                    # Reset trigger
+                    st.session_state.trigger_processing = False
                     
-                with col2:
-                    st.subheader("⚙️ Processing Options")
-                    batch_process = st.checkbox("Batch process all files", value=True)
-                    overwrite_existing = st.checkbox("Overwrite existing resumes", value=False)
-                    show_detailed_errors = st.checkbox("Show detailed error information", value=True)
-                
-                # Processing button
-                if st.button("🚀 Process Resumes", type="primary", use_container_width=True):
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        st.subheader("📊 Processing Status")
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+                    
+                    # Get options from sidebar keys
+                    batch_process = st.session_state.get("sidebar_batch_process", True)
+                    # We don't have show_detailed_errors in sidebar, default to True
+                    show_detailed_errors = True
+                    
                     self.process_uploaded_resumes(valid_files, progress_bar, status_text, batch_process, show_detailed_errors)
             else:
                 st.warning("⚠️ No valid files to process. Please check file formats and sizes.")
@@ -1939,6 +2057,105 @@ Generated: {result.get('generated_at', 'Unknown')}
             logger.error(f"Analytics page error: {str(e)}")
     
     
+    def display_resume_json_preview(self, resume_data, filename: str):
+        """Display parsed resume data as JSON with completeness indicators"""
+        st.subheader(f"📋 Parsed Data: {filename}")
+        
+        # Calculate completeness
+        required_fields = {
+            "profile.name": "Name",
+            "profile.email": "Email",
+            "profile.phone": "Phone",
+            "experience.total_years": "Experience Years",
+            "skills.technical": "Technical Skills"
+        }
+        
+        completeness_results = {}
+        for field_path, field_name in required_fields.items():
+            parts = field_path.split('.')
+            current = resume_data
+            
+            try:
+                for part in parts:
+                    current = current.get(part) if isinstance(current, dict) else getattr(current, part, None)
+                
+                has_value = current is not None and current != "" and current != []
+                completeness_results[field_name] = has_value
+            except (AttributeError, KeyError):
+                completeness_results[field_name] = False
+        
+        # Display completeness score
+        completeness_score = sum(completeness_results.values()) / len(completeness_results)
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.metric("Completeness Score", f"{completeness_score:.0%}")
+        
+        with col2:
+            if completeness_score >= 0.8:
+                st.success("✅ Excellent")
+            elif completeness_score >= 0.6:
+                st.warning("⚠️ Good")
+            else:
+                st.error("❌ Needs Review")
+        
+        # Display field status
+        st.markdown("**Field Status:**")
+        cols = st.columns(5)
+        for i, (field_name, has_value) in enumerate(completeness_results.items()):
+            with cols[i % 5]:
+                if has_value:
+                    st.success(f"✅ {field_name}")
+                else:
+                    st.error(f"❌ {field_name}")
+        
+        # Convert resume data to dict for JSON display
+        resume_dict = {
+            "profile": resume_data.profile.__dict__ if resume_data.profile else {},
+            "experience": resume_data.experience.__dict__ if resume_data.experience else {},
+            "skills": resume_data.skills.__dict__ if resume_data.skills else {},
+            "topics": resume_data.topics.__dict__ if resume_data.topics else {},
+            "tools_libraries": resume_data.tools_libraries.__dict__ if resume_data.tools_libraries else {},
+            "summary": resume_data.summary,
+            "key_strengths": resume_data.key_strengths
+        }
+        
+        # Tabbed view for different sections
+        tab1, tab2, tab3, tab4 = st.tabs(["👤 Profile", "💼 Experience & Skills", "📊 Full JSON", "🔍 Raw Text"])
+        
+        with tab1:
+            st.json(resume_dict.get("profile", {}))
+        
+        with tab2:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**Experience:**")
+                st.json(resume_dict.get("experience", {}))
+            with col2:
+                st.markdown("**Skills:**")
+                st.json(resume_dict.get("skills", {}))
+        
+        with tab3:
+            st.json(resume_dict)
+        
+        with tab4:
+            st.text_area("Raw Resume Text", resume_data.raw_text, height=300, disabled=True)
+        
+        # Add feedback mechanism
+        st.markdown("---")
+        st.markdown("**Was this parsing accurate?**")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("👍 Accurate", key=f"accurate_{resume_data.id}"):
+                st.success("Thank you for your feedback!")
+        with col2:
+            if st.button("👎 Needs Improvement", key=f"inaccurate_{resume_data.id}"):
+                st.info("We'll work on improving our parsing. You can edit the resume data in the customizer.")
+        with col3:
+            if st.button("🔄 Reprocess", key=f"reprocess_{resume_data.id}"):
+                st.info("Reprocessing feature coming soon!")
+    
     def process_uploaded_resumes(self, uploaded_files, progress_bar, status_text, batch_process, show_detailed_errors=True):
         """Process uploaded resume files with improved error handling"""
         try:
@@ -1976,10 +2193,10 @@ Generated: {result.get('generated_at', 'Unknown')}
                             candidate_name = getattr(resume_data.profile, 'name', '') or 'Unknown Candidate'
                             candidate_title = getattr(resume_data.profile, 'title', '') or 'No Title'
                         
-                        # Display resume summary with validation
-                        with st.expander(f"📄 {candidate_name} - {candidate_title}", expanded=False):
+                        # Display resume summary with JSON preview
+                        with st.expander(f"📄 {candidate_name} - {candidate_title}", expanded=True):
                             if resume_data:
-                                self.display_resume_summary(resume_data)
+                                self.display_resume_json_preview(resume_data, uploaded_file.name)
                             else:
                                 st.error("Resume data is empty or invalid")
                         
@@ -2065,162 +2282,15 @@ Generated: {result.get('generated_at', 'Unknown')}
                 st.write("• Database connection issues")
                 st.write("• File system permissions")
     
-    def add_job_form(self):
-        """Enhanced job addition form with URL extraction"""
-        st.subheader("➕ Add New Job")
+    def job_management_page(self):
+        """Job description management page with clean UI"""
+        st.header("📋 Job Management")
         
-        # URL extraction section (outside form)
-        st.markdown("**🔗 Quick Import from URL**")
-        url_col1, url_col2 = st.columns([3, 1])
+        st.info("💡 Use the sidebar to add new jobs.")
         
-        with url_col1:
-            job_url = st.text_input(
-                "Job Posting URL (Optional)",
-                placeholder="https://company.com/careers/job-posting",
-                help="Paste a job posting URL to automatically extract job details"
-            )
-        
-        with url_col2:
-            st.write("")  # Spacing
-            if st.button("🤖 Extract Job Details", disabled=not job_url):
-                if job_url and job_url.strip():
-                    with st.spinner("Extracting job details from URL..."):
-                        extraction_result = self.extract_job_from_url(job_url.strip())
-                        
-                        if extraction_result.get("success"):
-                            st.session_state.url_job_title = extraction_result.get("title", "")
-                            st.session_state.url_company = extraction_result.get("company", "")
-                            st.session_state.url_description = extraction_result.get("description", "")
-                            st.session_state.url_location = extraction_result.get("location", "")
-                            st.session_state.url_experience = extraction_result.get("experience", "")
-                            st.session_state.url_link = job_url.strip()
-                            st.session_state.url_extraction_success = True
-                            
-                            # Show detailed extraction results
-                            st.success("✅ Job details extracted successfully!")
-                            with st.expander("📋 Extracted Job Information", expanded=True):
-                                extracted_info = []
-                                if extraction_result.get("title"):
-                                    extracted_info.append(f"**Title:** {extraction_result.get('title')}")
-                                if extraction_result.get("company"):
-                                    extracted_info.append(f"**Company:** {extraction_result.get('company')}")
-                                if extraction_result.get("location"):
-                                    extracted_info.append(f"**Location:** {extraction_result.get('location')}")
-                                if extraction_result.get("experience"):
-                                    extracted_info.append(f"**Experience:** {extraction_result.get('experience')}")
-                                
-                                for info in extracted_info:
-                                    st.write(info)
-                                
-                                desc_length = len(extraction_result.get("description", ""))
-                                st.write(f"**Description:** {desc_length} characters extracted")
-                            
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Extraction failed: {extraction_result.get('error', 'Unknown error')}")
-                            st.info("💡 **Troubleshooting tips:**")
-                            st.write("• Ensure the URL is a direct link to a job posting")
-                            st.write("• Some sites require login or block automated access")
-                            st.write("• Try copying the job description manually if extraction fails")
-        
-        # Show extraction status
-        if hasattr(st.session_state, 'url_extraction_success') and st.session_state.url_extraction_success:
-            st.success("✅ Job details extracted from URL - review and submit below")
-            if st.button("🗑️ Clear URL Data"):
-                for key in ['url_job_title', 'url_company', 'url_description', 'url_location', 'url_experience', 'url_link', 'url_extraction_success']:
-                    if hasattr(st.session_state, key):
-                        delattr(st.session_state, key)
-                st.rerun()
-        
-        st.divider()
-        
-        # Main job form
-        with st.form("job_form", clear_on_submit=True):
-            # Basic Information
-            st.markdown("**📝 Job Information**")
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                job_title = st.text_input(
-                    "Job Title *", 
-                    value=getattr(st.session_state, 'url_job_title', ''),
-                    placeholder="e.g., Senior Software Engineer",
-                    help="Enter the exact job title as it appears in the posting"
-                )
-                company = st.text_input(
-                    "Company *", 
-                    value=getattr(st.session_state, 'url_company', ''),
-                    placeholder="e.g., TechCorp Inc.",
-                    help="Company name"
-                )
-            
-            with col2:
-                # Try to extract numeric value from extracted experience
-                default_exp = 3
-                if hasattr(st.session_state, 'url_experience') and st.session_state.url_experience:
-                    exp_match = re.search(r'(\d+)', st.session_state.url_experience)
-                    if exp_match:
-                        default_exp = min(int(exp_match.group(1)), 25)
-                
-                experience_years = st.number_input(
-                    "Required Experience (years)", 
-                    min_value=0, 
-                    max_value=25, 
-                    value=default_exp,
-                    help="Minimum years of experience required"
-                )
-                
-                # Show extracted experience info if available
-                if hasattr(st.session_state, 'url_experience') and st.session_state.url_experience:
-                    st.caption(f"💡 Extracted: {st.session_state.url_experience}")
-                location = st.text_input(
-                    "Location", 
-                    value=getattr(st.session_state, 'url_location', ''),
-                    placeholder="e.g., San Francisco, CA / Remote",
-                    help="Job location or 'Remote'"
-                )
-            
-            # Source URL (if extracted)
-            if hasattr(st.session_state, 'url_link'):
-                source_url = st.text_input(
-                    "Source URL",
-                    value=getattr(st.session_state, 'url_link', ''),
-                    help="Original job posting URL for reference"
-                )
-            
-            # Job Description
-            st.markdown("**📄 Job Description**")
-            job_description = st.text_area(
-                "Complete Job Description *",
-                value=getattr(st.session_state, 'url_description', ''),
-                height=250,
-                placeholder="""Paste the complete job description here including:
-• Job responsibilities
-• Required skills and qualifications  
-• Experience requirements
-• Nice-to-have skills
-• Company information""",
-                help="Include the full job posting for best AI analysis"
-            )
-            
-            # Submit button
-            col1, col2, col3 = st.columns([1, 1, 2])
-            with col2:
-                submitted = st.form_submit_button("💾 Save Job", type="primary", use_container_width=True)
-            
-            if submitted:
-                if not job_title or not job_description:
-                    st.error("⚠️ Please fill in Job Title and Job Description")
-                else:
-                    # Clear URL extraction data after successful submission
-                    source_url_value = getattr(st.session_state, 'url_link', '')
-                    
-                    self.save_job_description(job_title, company, job_description, experience_years, location, source_url_value)
-                    
-                    # Clear session state
-                    for key in ['url_job_title', 'url_company', 'url_description', 'url_location', 'url_experience', 'url_link', 'url_extraction_success']:
-                        if hasattr(st.session_state, key):
-                            delattr(st.session_state, key)
+        self.display_jobs_table()
+    
+    # add_job_form removed in favor of sidebar_add_job
 
     def display_jobs_table(self):
         """Display jobs in a clean table format"""

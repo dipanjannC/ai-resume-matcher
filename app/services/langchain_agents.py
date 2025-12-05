@@ -33,9 +33,37 @@ class LangChainAgents:
     """
     
     def __init__(self, openai_api_key: Optional[str] = None):
-        """Initialize LangChain agents with OpenAI model"""
-        # Initialize LLM service - use Groq since we have the API key
-        self.llm = LLMService().get_groq()  # Use Groq instead of OpenAI
+        """Initialize LangChain agents with multiple LLM providers for fallback"""
+        self.llms = []
+        
+        # 1. Primary: Groq
+        try:
+            self.llms.append(("Groq", LLMService().get_groq()))
+        except Exception as e:
+            logger.warning(f"Groq LLM not available: {e}")
+            
+        # 2. Secondary: Gemini
+        try:
+            self.llms.append(("Gemini", LLMService().get_gemini()))
+        except Exception as e:
+            logger.warning(f"Gemini LLM not available: {e}")
+            
+        # 3. Tertiary: OpenAI (if key provided or in env)
+        try:
+            # Check if OpenAI key is available
+            if openai_api_key or os.getenv("OPENAI_API_KEY"):
+                from langchain_openai import ChatOpenAI
+                self.llms.append(("OpenAI", ChatOpenAI(
+                    model="gpt-3.5-turbo",
+                    temperature=0.3,
+                    api_key=openai_api_key or os.getenv("OPENAI_API_KEY")
+                )))
+        except Exception as e:
+            logger.warning(f"OpenAI LLM not available: {e}")
+            
+        if not self.llms:
+            logger.error("No LLM providers available! Please configure at least one provider.")
+            # We don't raise here to allow app to start, but operations will fail
         
         # Initialize parsers
         self.resume_parser = PydanticOutputParser(pydantic_object=ResumeParsingOutput)
@@ -48,7 +76,42 @@ class LangChainAgents:
         self.match_prompt = prompt_manager.get_matching_prompt()
         self.summary_prompt = prompt_manager.get_summary_prompt()
         
-        logger.info("LangChain agents initialized successfully")
+        logger.info(f"LangChain agents initialized with {len(self.llms)} providers: {[name for name, _ in self.llms]}")
+
+    async def _execute_with_fallback(self, operation_name: str, prompt_template: ChatPromptTemplate, input_data: Dict[str, Any]) -> Any:
+        """
+        Execute an LLM operation with automatic fallback to available providers.
+        
+        Args:
+            operation_name: Name of operation for logging
+            prompt_template: LangChain prompt template
+            input_data: Input dictionary for the prompt
+            
+        Returns:
+            LLM response content
+            
+        Raises:
+            ResumeMatcherException: If all providers fail
+        """
+        last_error = None
+        
+        for provider_name, llm in self.llms:
+            try:
+                logger.info(f"Attempting {operation_name} with {provider_name}...")
+                chain = prompt_template | llm
+                response = await chain.ainvoke(input_data)
+                logger.info(f"{operation_name} successful with {provider_name}")
+                return response
+            except Exception as e:
+                logger.warning(f"{operation_name} failed with {provider_name}: {e}")
+                last_error = e
+                continue
+                
+        # If we get here, all providers failed
+        error_msg = f"All LLM providers failed for {operation_name}. Last error: {last_error}"
+        logger.error(error_msg)
+        raise ResumeMatcherException(error_msg)
+
     
     def _clean_json_response(self, response_text: str) -> str:
         """
@@ -148,16 +211,17 @@ class LangChainAgents:
             # Get format instructions
             format_instructions = self.resume_parser.get_format_instructions()
             
-            # Create LLM chain without parser first
-            llm_chain = self.resume_prompt | self.llm
+            # Execute with fallback
+            raw_response = await self._execute_with_fallback(
+                "Resume Parsing",
+                self.resume_prompt,
+                {
+                    "resume_text": resume_text,
+                    "format_instructions": format_instructions
+                }
+            )
             
-            # Get raw LLM response
-            raw_response = await llm_chain.ainvoke({
-                "resume_text": resume_text,
-                "format_instructions": format_instructions
-            })
-            
-            logger.info(f"Raw LLM response: {raw_response.content[:500]}...")
+            logger.info(f"Raw LLM response: {str(raw_response.content)[:500]}...")
             
             # Clean and parse the response
             try:
@@ -169,47 +233,23 @@ class LangChainAgents:
                 logger.error(f"Failed to parse LLM output: {str(parse_error)}")
                 logger.error(f"Raw output was: {str(raw_response.content)[:1000]}...")
                 
-                # Try multiple parsing strategies
-                result = None
-                
-                # Strategy 1: Try to parse the raw response as JSON directly
+                # Try to parse raw JSON if parser failed
                 try:
                     import json
                     raw_content = str(raw_response.content)
-                    raw_data = json.loads(raw_content)
-                    logger.info("Raw response is valid JSON, attempting direct parsing")
-                    
-                    from app.models.langchain_models import ResumeParsingOutput
-                    result = ResumeParsingOutput(**raw_data)
-                    logger.info("Successfully created result from raw JSON")
-                    
-                except Exception as direct_parse_error:
-                    logger.error(f"Direct JSON parsing failed: {str(direct_parse_error)}")
-                    
-                    # Strategy 2: Try to extract JSON from the response
-                    try:
-                        import re
-                        import json
+                    # Try to find JSON block
+                    import re
+                    json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+                    if json_match:
+                        json_data = json.loads(json_match.group(0))
                         from app.models.langchain_models import ResumeParsingOutput
-                        
-                        raw_content = str(raw_response.content)
-                        # Look for JSON-like structure in the response
-                        json_match = re.search(r'\{.*\}', raw_content, re.DOTALL)
-                        if json_match:
-                            json_str = json_match.group(0)
-                            json_data = json.loads(json_str)
-                            result = ResumeParsingOutput(**json_data)
-                            logger.info("Successfully extracted and parsed JSON from response")
-                        else:
-                            raise Exception("No JSON structure found in response")
-                            
-                    except Exception as extraction_error:
-                        logger.error(f"JSON extraction also failed: {str(extraction_error)}")
-                        
-                        # Strategy 3: Final fallback with enhanced extraction
-                        logger.info("All parsing strategies failed, using enhanced fallback")
-                        result = self._create_fallback_resume_structure(resume_text)
-            
+                        result = ResumeParsingOutput(**json_data)
+                    else:
+                        raise ValueError("No JSON found")
+                except Exception as e:
+                    logger.error(f"All parsing attempts failed: {e}")
+                    raise ResumeMatcherException("Failed to parse resume data from AI response. Please try again.")
+
             # Convert to ResumeData object
             try:
                 # Validate and fix the result structure before conversion
@@ -224,289 +264,19 @@ class LangChainAgents:
                 resume_data.tools_libraries = ToolsLibrariesInfo(**result.tools_libraries)
                 resume_data.summary = result.summary
                 resume_data.key_strengths = result.key_strengths
+                
+                logger.info("Resume parsing completed successfully")
+                return resume_data
+                
             except Exception as conversion_error:
                 logger.error(f"Failed to convert result to ResumeData: {str(conversion_error)}")
-                logger.error(f"Result object skills: {getattr(result, 'skills', 'No skills attr')}")
-                logger.error(f"Result object type: {type(result)}")
-                # Create fallback resume data if conversion fails
-                logger.info("Creating fallback ResumeData structure")
-                fallback_result = self._create_fallback_resume_structure(resume_text)
-                resume_data = ResumeData()
-                resume_data.raw_text = resume_text
-                resume_data.profile = ProfileInfo(**fallback_result.profile)
-                resume_data.experience = ExperienceInfo(**fallback_result.experience)
-                resume_data.skills = SkillsInfo(**fallback_result.skills)
-                resume_data.topics = TopicsInfo(**fallback_result.topics)
-                resume_data.tools_libraries = ToolsLibrariesInfo(**fallback_result.tools_libraries)
-                resume_data.summary = fallback_result.summary
-                resume_data.key_strengths = fallback_result.key_strengths
-            
-            logger.info("Resume parsing completed successfully")
-            return resume_data
+                raise ResumeMatcherException("Failed to structure resume data. Please try again.")
             
         except Exception as e:
             logger.error(f"Failed to parse resume: {str(e)}")
             raise ResumeMatcherException(f"Resume parsing failed: {str(e)}")
     
-    def _create_fallback_resume_structure(self, resume_text: str) -> ResumeParsingOutput:
-        """Create a fallback structure using rule-based extraction when AI parsing fails"""
-        logger.info("Creating fallback resume structure with rule-based extraction")
-        
-        # Use rule-based extraction methods
-        name = self._extract_name_fallback(resume_text)
-        title = self._extract_title_fallback(resume_text)
-        email = self._extract_email_fallback(resume_text)
-        phone = self._extract_phone_fallback(resume_text)
-        linkedin = self._extract_linkedin_fallback(resume_text)
-        technical_skills = self._extract_technical_skills_fallback(resume_text)
-        experience_years = self._estimate_experience_years_fallback(resume_text)
-        
-        logger.info(f"Fallback extraction - Name: {name}, Title: {title}, Skills: {len(technical_skills)}")
-        
-        return ResumeParsingOutput(
-            profile={
-                "name": name,
-                "title": title,
-                "email": email,
-                "phone": phone,
-                "linkedin": linkedin,
-                "location": ""
-            },
-            experience={
-                "total_years": experience_years,
-                "roles": [],
-                "companies": [],
-                "responsibilities": [],
-                "achievements": []
-            },
-            skills={
-                "technical": technical_skills,
-                "soft": [],
-                "certifications": [],
-                "languages": []
-            },
-            topics={
-                "domains": [],
-                "specializations": [],
-                "interests": []
-            },
-            tools_libraries={
-                "programming_languages": self._categorize_programming_languages(technical_skills),
-                "frameworks": self._categorize_frameworks(technical_skills),
-                "tools": self._categorize_tools(technical_skills),
-                "databases": self._categorize_databases(technical_skills),
-                "cloud_platforms": self._categorize_cloud_platforms(technical_skills)
-            },
-            summary=f"Resume processed using rule-based extraction. Extracted {len(technical_skills)} skills.",
-            key_strengths=["Rule-based parsing applied", "Manual review recommended for detailed information"]
-        )
-    
-    def _create_fallback_job_structure(self, job_text: str) -> JobParsingOutput:
-        """Create a basic fallback structure when job parsing fails"""
-        return JobParsingOutput(
-            title="Unknown Position",
-            company="Unknown Company",
-            required_skills=[],
-            preferred_skills=[],
-            experience_years=0,
-            education_level="Not specified",
-            responsibilities=[],
-            requirements=[],
-            company_info="",
-            summary="Job parsing failed - manual review required"
-        )
-    
-    def _extract_name_fallback(self, text: str) -> str:
-        """Extract name using rule-based patterns"""
-        import re
-        
-        lines = text.split('\n')
-        
-        # Common name patterns
-        name_patterns = [
-            r'^([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # First line name
-            r'Name[:]\s*([A-Z][a-z]+ [A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',  # Name: format
-            r'([A-Z][A-Z\s]+)',  # All caps name
-        ]
-        
-        # Try first few lines for name
-        for i, line in enumerate(lines[:3]):
-            line = line.strip()
-            if len(line) > 50 or len(line) < 5:  # Skip very long or short lines
-                continue
-                
-            for pattern in name_patterns:
-                match = re.search(pattern, line)
-                if match:
-                    name = match.group(1).strip()
-                    # Validate it looks like a name
-                    if len(name.split()) >= 2 and not any(char.isdigit() for char in name):
-                        return name
-        
-        return "Unknown"
-    
-    def _extract_title_fallback(self, text: str) -> str:
-        """Extract title using rule-based patterns"""
-        import re
-        
-        lines = text.split('\n')
-        
-        title_patterns = [
-            r'(Engineer|Developer|Scientist|Manager|Analyst|Consultant|Specialist|Lead|Senior|Principal|Director|VP|President|CEO|CTO)',
-            r'(Software|Data|Machine Learning|ML|AI|Full Stack|Backend|Frontend|DevOps|Cloud|System)',
-        ]
-        
-        # Look in first 5 lines
-        for line in lines[:5]:
-            line = line.strip()
-            if 2 < len(line) < 50:  # Reasonable title length
-                for pattern in title_patterns:
-                    if re.search(pattern, line, re.IGNORECASE):
-                        return line
-        
-        return "Unknown"
-    
-    def _extract_email_fallback(self, text: str) -> str:
-        """Extract email using regex"""
-        import re
-        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
-        match = re.search(email_pattern, text)
-        return match.group(0) if match else ""
-    
-    def _extract_phone_fallback(self, text: str) -> str:
-        """Extract phone using regex"""
-        import re
-        phone_patterns = [
-            r'\+?\d{1,3}[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}',
-            r'\+?\d{10,15}',
-        ]
-        
-        for pattern in phone_patterns:
-            match = re.search(pattern, text)
-            if match:
-                return match.group(0)
-        return ""
-    
-    def _extract_linkedin_fallback(self, text: str) -> str:
-        """Extract LinkedIn URL"""
-        import re
-        linkedin_pattern = r'(?:https?://)?(?:www\.)?linkedin\.com/in/[\w-]+'
-        match = re.search(linkedin_pattern, text, re.IGNORECASE)
-        return match.group(0) if match else ""
-    
-    def _extract_technical_skills_fallback(self, text: str) -> list:
-        """Extract technical skills using comprehensive keyword matching"""
-        import re
-        
-        # Comprehensive skill lists
-        programming_languages = [
-            'Python', 'Java', 'JavaScript', 'TypeScript', 'C++', 'C#', 'C', 'Go', 'Rust', 'Ruby', 'PHP',
-            'Swift', 'Kotlin', 'Scala', 'R', 'MATLAB', 'SQL', 'HTML', 'CSS', 'Shell', 'Bash', 'PowerShell'
-        ]
-        
-        frameworks_libraries = [
-            'React', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'Flask', 'FastAPI', 'Spring', 'Laravel',
-            'TensorFlow', 'PyTorch', 'Keras', 'Scikit-learn', 'Pandas', 'NumPy', 'OpenCV', 'NLTK', 'SpaCy',
-            'LangChain', 'Transformers', 'BERT', 'GPT', 'LLMs', 'Hugging Face'
-        ]
-        
-        databases = [
-            'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Elasticsearch', 'Cassandra', 'DynamoDB', 'Oracle',
-            'SQL Server', 'SQLite', 'Neo4j', 'ChromaDB', 'Pinecone', 'Weaviate', 'Qdrant', 'Stardog'
-        ]
-        
-        cloud_platforms = [
-            'AWS', 'Azure', 'GCP', 'Google Cloud', 'Docker', 'Kubernetes', 'Jenkins', 'GitLab', 'GitHub Actions',
-            'Terraform', 'Ansible', 'Chef', 'Puppet'
-        ]
-        
-        tools_tech = [
-            'Git', 'SVN', 'Jira', 'Confluence', 'Slack', 'Teams', 'Zoom', 'Figma', 'Adobe', 'Photoshop',
-            'Linux', 'Unix', 'Windows', 'macOS', 'Apache', 'Nginx', 'Hadoop', 'Spark', 'Kafka', 'RabbitMQ',
-            'Solr', 'Lucene', 'GraphQL', 'REST', 'API', 'Microservices', 'Serverless', 'Lambda'
-        ]
-        
-        all_skills = programming_languages + frameworks_libraries + databases + cloud_platforms + tools_tech
-        
-        found_skills = []
-        text_upper = text.upper()
-        
-        for skill in all_skills:
-            # Use word boundaries for exact matches
-            pattern = r'\b' + re.escape(skill.upper()) + r'\b'
-            if re.search(pattern, text_upper):
-                found_skills.append(skill)
-        
-        # Remove duplicates and sort
-        found_skills = sorted(list(set(found_skills)))
-        
-        return found_skills
-    
-    def _estimate_experience_years_fallback(self, text: str) -> int:
-        """Estimate experience years from text"""
-        import re
-        
-        # Look for experience patterns
-        experience_patterns = [
-            r'(\d+)\+?\s*years?\s*(?:of\s*)?experience',
-            r'experience.*?(\d+)\+?\s*years?',
-            r'(\d+)\+?\s*years?\s*in',
-        ]
-        
-        max_years = 0
-        for pattern in experience_patterns:
-            matches = re.findall(pattern, text, re.IGNORECASE)
-            for match in matches:
-                try:
-                    years = int(match)
-                    max_years = max(max_years, years)
-                except ValueError:
-                    continue
-        
-        return max_years
-    
-    def _categorize_programming_languages(self, skills: list) -> list:
-        """Categorize programming languages from technical skills"""
-        programming_langs = {
-            'Python', 'Java', 'JavaScript', 'TypeScript', 'C++', 'C#', 'C', 'Go', 'Rust', 
-            'Ruby', 'PHP', 'Swift', 'Kotlin', 'Scala', 'R', 'MATLAB', 'SQL', 'HTML', 'CSS'
-        }
-        return [skill for skill in skills if skill in programming_langs]
-    
-    def _categorize_frameworks(self, skills: list) -> list:
-        """Categorize frameworks from technical skills"""
-        frameworks = {
-            'React', 'Vue', 'Angular', 'Node.js', 'Express', 'Django', 'Flask', 'FastAPI', 
-            'Spring', 'Laravel', 'TensorFlow', 'PyTorch', 'Keras', 'Scikit-learn', 
-            'LangChain', 'Transformers', 'Hugging Face'
-        }
-        return [skill for skill in skills if skill in frameworks]
-    
-    def _categorize_tools(self, skills: list) -> list:
-        """Categorize tools from technical skills"""
-        tools = {
-            'Git', 'Docker', 'Kubernetes', 'Jenkins', 'GitLab', 'GitHub Actions', 
-            'Jira', 'Confluence', 'Tableau', 'PowerBI', 'Jupyter', 'VS Code',
-            'Linux', 'Unix', 'Apache', 'Nginx'
-        }
-        return [skill for skill in skills if skill in tools]
-    
-    def _categorize_databases(self, skills: list) -> list:
-        """Categorize databases from technical skills"""
-        databases = {
-            'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Elasticsearch', 'Cassandra', 
-            'DynamoDB', 'Oracle', 'SQL Server', 'SQLite', 'Neo4j', 'ChromaDB', 
-            'Pinecone', 'Weaviate', 'Qdrant', 'Stardog', 'Solr'
-        }
-        return [skill for skill in skills if skill in databases]
-    
-    def _categorize_cloud_platforms(self, skills: list) -> list:
-        """Categorize cloud platforms from technical skills"""
-        cloud_platforms = {
-            'AWS', 'Azure', 'GCP', 'Google Cloud', 'Heroku', 'DigitalOcean', 
-            'Vercel', 'Netlify', 'Firebase'
-        }
-        return [skill for skill in skills if skill in cloud_platforms]
+    # Fallback methods removed in favor of multi-model rerouting
     
     def _validate_and_fix_result_structure(self, result):
         """Validate and fix the result structure to match expected models"""
@@ -647,16 +417,17 @@ class LangChainAgents:
             # Get format instructions
             format_instructions = self.job_parser.get_format_instructions()
             
-            # Create LLM chain without parser first
-            llm_chain = self.job_prompt | self.llm
+            # Execute with fallback
+            raw_response = await self._execute_with_fallback(
+                "Job Parsing",
+                self.job_prompt,
+                {
+                    "job_text": job_text,
+                    "format_instructions": format_instructions
+                }
+            )
             
-            # Get raw LLM response
-            raw_response = await llm_chain.ainvoke({
-                "job_text": job_text,
-                "format_instructions": format_instructions
-            })
-            
-            logger.info(f"Raw job parsing response: {raw_response.content[:300]}...")
+            logger.info(f"Raw job parsing response: {str(raw_response.content)[:300]}...")
             
             # Clean and parse the response
             try:
@@ -665,9 +436,7 @@ class LangChainAgents:
             except Exception as parse_error:
                 logger.error(f"Failed to parse job LLM output: {str(parse_error)}")
                 logger.error(f"Raw output was: {raw_response.content}")
-                
-                # Fallback: create a basic structure
-                result = self._create_fallback_job_structure(job_text)
+                raise ResumeMatcherException("Failed to parse job description from AI response. Please try again.")
             
             # Convert to JobDescription object
             job_data = JobDescription(
@@ -719,15 +488,29 @@ class LangChainAgents:
                 "responsibilities": job_data.responsibilities
             }
             
-            # Create chain
-            chain = self.match_prompt | self.llm | self.match_parser
+            # Execute with fallback
+            # Note: match_parser is part of the chain in original code, but _execute_with_fallback returns raw response
+            # We need to parse it manually or include parser in the chain passed to _execute_with_fallback
+            # But _execute_with_fallback takes a prompt_template and adds | llm.
+            # So we get raw response and then parse.
             
-            # Analyze match
-            result = await chain.ainvoke({
-                "candidate_data": str(candidate_summary),
-                "job_data": str(job_summary),
-                "format_instructions": self.match_parser.get_format_instructions()
-            })
+            raw_response = await self._execute_with_fallback(
+                "Match Analysis",
+                self.match_prompt,
+                {
+                    "candidate_data": str(candidate_summary),
+                    "job_data": str(job_summary),
+                    "format_instructions": self.match_parser.get_format_instructions()
+                }
+            )
+            
+            # Parse response
+            try:
+                cleaned_response = self._clean_json_response(str(raw_response.content))
+                result = self.match_parser.parse(cleaned_response)
+            except Exception as parse_error:
+                logger.error(f"Failed to parse match analysis output: {parse_error}")
+                raise ResumeMatcherException("Failed to analyze match. Please try again.")
             
             # Convert to MatchResult object
             match_result = MatchResult(
@@ -764,15 +547,17 @@ class LangChainAgents:
             Enhanced professional summary
         """
         try:
-            # Use the prompt from prompt manager
-            chain = self.summary_prompt | self.llm
-            
-            result = await chain.ainvoke({
-                "profile": f"{resume_data.profile.name} - {resume_data.profile.title}",
-                "experience_years": resume_data.experience.total_years,
-                "key_skills": ", ".join(resume_data.skills.technical[:5]),
-                "strengths": ", ".join(resume_data.key_strengths)
-            })
+            # Execute with fallback
+            result = await self._execute_with_fallback(
+                "Summary Generation",
+                self.summary_prompt,
+                {
+                    "profile": f"{resume_data.profile.name} - {resume_data.profile.title}",
+                    "experience_years": resume_data.experience.total_years,
+                    "key_skills": ", ".join(resume_data.skills.technical[:5]),
+                    "strengths": ", ".join(resume_data.key_strengths)
+                }
+            )
             
             return str(result.content).strip() if hasattr(result, 'content') else str(result).strip()
             
@@ -794,24 +579,20 @@ class LangChainAgents:
         try:
             logger.info("Customizing resume using LangChain agents")
             
-            # Create chain
-            chain = prompt | self.llm
+            # Execute with fallback
+            raw_response = await self._execute_with_fallback(
+                "Resume Customization",
+                prompt,
+                context
+            )
             
-            # Invoke chain with context
-            result = await chain.ainvoke(context)
-            
-            # Parse JSON response
-            response_text = str(result.content) if hasattr(result, 'content') else str(result)
-            
-            # Clean and parse JSON
-            cleaned_response = self._clean_json_response(response_text)
-            customization_data = json.loads(cleaned_response)
-            
-            return customization_data
+            # Clean and parse response
+            cleaned_response = self._clean_json_response(str(raw_response.content))
+            return json.loads(cleaned_response)
             
         except Exception as e:
-            logger.error(f"Failed to customize resume: {str(e)}")
-            return None
+            logger.error(f"Failed to customize resume: {e}")
+            raise ResumeMatcherException(f"Resume customization failed: {str(e)}")
 
     async def generate_cover_letter(self, context: Dict[str, Any], prompt: ChatPromptTemplate) -> Optional[str]:
         """

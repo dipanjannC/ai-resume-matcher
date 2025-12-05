@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-3.5-turbo"
     OPENAI_TEMPERATURE: float = 0.1
     OPENAI_MAX_TOKENS: int = 2000
+
+    # Google Gemini Configuration
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-1.5-flash"
+
+    # Memory Configuration
+    MEMORY_PROVIDER: str = "mem0"  # mem0 or graphiti
     
     # ChromaDB Vector Store
     CHROMADB_PERSIST_DIRECTORY: str = "./data/vectordb"

@@ -15,6 +15,7 @@ pandas==2.2.3
 langchain
 langchain-openai
 langchain-groq
+langchain-google-genai
 langchain-community
 langchain-core
 openai
@@ -30,6 +31,10 @@ python-docx==1.1.2
 
 # PDF generation
 reportlab==4.0.8
+
+# Knowledge Graph Visualization
+pyvis==0.3.2
+networkx==3.2.1
 
 # Utilities
 numpy==2.2.1

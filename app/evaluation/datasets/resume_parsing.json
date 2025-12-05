@@ -1,0 +1,94 @@
+[
+    {
+        "id": "test_001",
+        "description": "Software Engineer with Python and JavaScript experience",
+        "input": "John Doe\nSoftware Engineer\nemail@example.com | (555) 123-4567 | San Francisco, CA\n\nPROFESSIONAL SUMMARY\nExperienced software engineer with 5 years of experience in full-stack development.\n\nSKILLS\n- Programming: Python, JavaScript, TypeScript, Java\n- Frameworks: React, Node.js, Django, Flask\n- Databases: PostgreSQL, MongoDB, Redis\n- Cloud: AWS, Docker, Kubernetes\n\nEXPERIENCE\nSenior Software Engineer | Tech Corp | 2021-Present\n- Led development of microservices architecture\n- Improved system performance by 40%\n- Mentored junior developers\n\nSoftware Engineer | StartupXYZ | 2019-2021\n- Built RESTful APIs using Django\n- Implemented CI/CD pipelines\n- Collaborated with cross-functional teams",
+        "expected": {
+            "profile": {
+                "name": "John Doe",
+                "title": "Software Engineer",
+                "email": "email@example.com",
+                "phone": "(555) 123-4567",
+                "location": "San Francisco, CA"
+            },
+            "experience": {
+                "total_years": 5
+            },
+            "skills": {
+                "technical": [
+                    "Python",
+                    "JavaScript",
+                    "TypeScript",
+                    "Java",
+                    "React",
+                    "Node.js",
+                    "Django",
+                    "Flask",
+                    "PostgreSQL",
+                    "MongoDB",
+                    "Redis",
+                    "AWS",
+                    "Docker",
+                    "Kubernetes"
+                ]
+            }
+        }
+    },
+    {
+        "id": "test_002",
+        "description": "Data Scientist with ML experience",
+        "input": "Jane Smith\nData Scientist\njane.smith@email.com | LinkedIn: linkedin.com/in/janesmith\n\nSUMMARY\nData scientist specializing in machine learning and statistical analysis with 3 years of experience.\n\nTECHNICAL SKILLS\n- Languages: Python, R, SQL\n- ML/AI: TensorFlow, PyTorch, Scikit-learn, Keras\n- Data: Pandas, NumPy, Matplotlib, Seaborn\n- Tools: Jupyter, Git, Docker\n\nPROFESSIONAL EXPERIENCE\nData Scientist | Analytics Inc | Jan 2021 - Present\n- Developed predictive models with 85% accuracy\n- Analyzed large datasets using Python and SQL\n- Created data visualizations for stakeholders\n\nJunior Data Analyst | DataCo | Jun 2020 - Dec 2020\n- Performed statistical analysis on customer data\n- Built dashboards using Tableau",
+        "expected": {
+            "profile": {
+                "name": "Jane Smith",
+                "title": "Data Scientist",
+                "email": "jane.smith@email.com"
+            },
+            "experience": {
+                "total_years": 3
+            },
+            "skills": {
+                "technical": [
+                    "Python",
+                    "R",
+                    "SQL",
+                    "TensorFlow",
+                    "PyTorch",
+                    "Scikit-learn",
+                    "Keras",
+                    "Pandas",
+                    "NumPy",
+                    "Matplotlib",
+                    "Seaborn",
+                    "Jupyter",
+                    "Git",
+                    "Docker",
+                    "Tableau"
+                ]
+            }
+        }
+    },
+    {
+        "id": "test_003",
+        "description": "Frontend Developer with minimal experience",
+        "input": "Alex Johnson\nFrontend Developer\nalex@email.com\n\nSKILLS\nHTML, CSS, JavaScript, React\n\nEXPERIENCE\nFrontend Developer Intern | WebStudio | Summer 2023\n- Built responsive web pages\n- Worked with React components",
+        "expected": {
+            "profile": {
+                "name": "Alex Johnson",
+                "title": "Frontend Developer",
+                "email": "alex@email.com"
+            },
+            "experience": {
+                "total_years": 0
+            },
+            "skills": {
+                "technical": [
+                    "HTML",
+                    "CSS",
+                    "JavaScript",
+                    "React"
+                ]
+            }
+        }
+    }
+]

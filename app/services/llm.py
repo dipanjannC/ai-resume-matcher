@@ -41,6 +41,31 @@ class LLMService:
             logger.error("Failed to create Groq LLM", error=str(e))
             raise
 
+    def get_gemini(self, model_name: Optional[str] = None):
+        """Get Google Gemini LLM instance - fallback provider"""
+        try:
+            gemini_api_key = os.getenv("GEMINI_API_KEY")
+            if not gemini_api_key:
+                raise ValueError("GEMINI_API_KEY not found in environment variables")
+            
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            
+            model = model_name or settings.GEMINI_MODEL
+            
+            llm = ChatGoogleGenerativeAI(
+                model=model,
+                google_api_key=gemini_api_key,
+                temperature=0.3,
+                convert_system_message_to_human=True
+            )
+            
+            logger.info("Created Gemini LLM", model=model)
+            return llm
+            
+        except Exception as e:
+            logger.error("Failed to create Gemini LLM", error=str(e))
+            raise
+
 
 # Create global instance
 llm_service = LLMService()

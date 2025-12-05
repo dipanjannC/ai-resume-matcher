@@ -6,43 +6,50 @@ A professional, production-ready AI resume matching system that uses LangChain a
 
 ## ✨ **Key Features**
 
-- **🌐 Professional Web Interface**: Clean Streamlit UI with tabbed navigation
-- **🤖 Enhanced AI Processing**: LangChain agents with comprehensive fallbacks
-- **�️ Bulletproof Parsing**: Multi-method PDF/DOCX extraction with error recovery
+- **🌐 Professional Web Interface**: Clean Streamlit UI with sidebar navigation for core actions
+- **🤖 Multi-LLM Support**: Robust fallback system using Groq, Gemini, and OpenAI
+- **🧠 Advanced Memory**: Integrated Mem0 and Graphiti for context-aware interactions
+- **️ Bulletproof Parsing**: Multi-method PDF/DOCX extraction with error recovery
 - **🔍 Smart Vector Search**: ChromaDB with semantic similarity matching
 - **📊 Rich Analytics**: Real-time charts and insights with Plotly
 - **💼 Job Management**: Professional workflow for job posting and candidate matching
-- **� Intelligent Matching**: AI-powered scoring with detailed analysis
+- ** Intelligent Matching**: AI-powered scoring with detailed analysis
 - **📈 Data Visualization**: Comprehensive reporting and candidate comparison
 
 ## 🚀 **Quick Start**
 
 ### 1. **Install Dependencies**
+Using `uv` (recommended):
+```bash
+uv pip install -r requirements.txt
+```
+Or with pip:
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. **Set OpenAI API Key**
+### 2. **Set API Keys**
+You can set these in a `.env` file or configure them in the Streamlit Sidebar.
 ```bash
-export OPENAI_API_KEY=your_openai_api_key_here
+export GROQ_API_KEY=your_groq_key
+export GEMINI_API_KEY=your_gemini_key
+export OPENAI_API_KEY=your_openai_key  # Optional fallback
 ```
 
 ### 3. **Run Application**
 ```bash
-python run_streamlit.py
+streamlit run streamlit_app.py
 # Visit http://localhost:8501
 ```
 
 ## 🎮 **Usage Modes**
 
-### **� Streamlit Web Interface (Recommended)**
+### ** Streamlit Web Interface (Recommended)**
 ```bash
-python run_streamlit.py
-# Or directly: streamlit run streamlit_app.py
-# Visit http://localhost:8501
+streamlit run streamlit_app.py
 ```
-- **📄 Resume Upload**: Multi-file upload with progress tracking
-- **📋 Job Management**: Add and store job descriptions  
+- **📄 Resume Upload**: Sidebar-based multi-file upload
+- **📋 Job Management**: Add jobs via sidebar (URL extraction or manual)
 - **🎯 Interactive Matching**: Real-time candidate-job matching
 - **📊 Analytics Dashboard**: Visualizations and insights
 - **🔍 Advanced Search**: Filter and search candidates
@@ -70,13 +77,14 @@ python app/main.py
 ## 🏗️ **Architecture**
 
 ```
-📄 Resume Upload → 🤖 LangChain Parsing → 📊 Structured Data → 🔍 Vector Storage
-                                                               ↓
-📋 Job Description → 🤖 LangChain Analysis → 🎯 Smart Matching → 📈 Scored Results
+📄 Resume Upload → 🤖 LangChain Agents (Groq/Gemini/OpenAI) → 🧠 Memory (Mem0/Graphiti)
+                                      ↓
+📋 Job Description → 🤖 Analysis → 🎯 Smart Matching → 📈 Scored Results
 ```
 
 **Core Components:**
-- **LangChain Agents**: GPT-3.5-turbo powered intelligent parsing
+- **LangChain Agents**: Multi-provider LLM orchestration with automatic fallback
+- **Memory Layer**: Mem0 and Graphiti for long-term context
 - **ChromaDB**: Vector database for semantic similarity
 - **File Storage**: Simple JSON-based data persistence
 - **FastAPI**: Clean REST API interface
@@ -110,7 +118,7 @@ ai-resume-matcher/
 ├── app/
 │   ├── core/           # Configuration and utilities
 │   ├── models/         # Data models (no database)
-│   ├── services/       # LangChain agents and processing
+│   ├── services/       # LangChain agents, Memory, and processing
 │   ├── utils/          # File handling utilities
 │   └── main.py         # FastAPI server
 ├── data/               # File-based storage
@@ -120,7 +128,7 @@ ai-resume-matcher/
 │   └── vectordb/       # ChromaDB storage
 ├── demo_example.py     # Interactive demo script
 ├── requirements.txt    # Dependencies
-└── TASKLIST.md        # Complete project status
+└── task.md             # Complete project status
 ```
 
 ## 🛠️ **API Endpoints**
@@ -135,7 +143,18 @@ ai-resume-matcher/
 
 Create a `.env` file:
 ```env
-OPENAI_API_KEY=your_key_here
+# LLM Providers (At least one required)
+GROQ_API_KEY=your_groq_key
+GEMINI_API_KEY=your_gemini_key
+OPENAI_API_KEY=your_openai_key
+
+# Memory (Optional)
+MEMORY_PROVIDER=mem0  # or graphiti
+MEM0_API_KEY=your_mem0_key
+GRAPHITI_URL=your_graphiti_url
+GRAPHITI_API_KEY=your_graphiti_key
+
+# System
 DEBUG=false
 LOG_LEVEL=INFO
 MAX_FILE_SIZE_MB=10

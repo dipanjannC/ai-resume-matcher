@@ -6,10 +6,12 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
 
 ## Core Architecture
 
+## Core Architecture
+
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Streamlit UI  │    │    FastAPI       │    │   CLI Tools     │
-│   (Primary)     │    │   (Optional)     │    │   (Demos)       │
+│   (Sidebar Nav) │    │   (Optional)     │    │   (Demos)       │
 └─────────┬───────┘    └─────────┬────────┘    └─────────┬───────┘
           │                      │                       │
           └──────────────────────┼───────────────────────┘
@@ -20,16 +22,15 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
                     └────────────┬────────────┘
                                  │
         ┌────────────────────────┼────────────────────────┐
-        │                       │                        │
-┌───────▼────────┐    ┌─────────▼────────┐    ┌─────────▼────────┐
-│ LangChain      │    │ Vector Store     │    │ File Storage     │
-│ Agents         │    │ (ChromaDB)       │    │ (JSON Files)     │
-│                │    │                  │    │                  │
-│ • Resume       │    │ • Embeddings     │    │ • Resume Data    │
-│   Parsing      │    │ • Similarity     │    │ • Job Data       │
-│ • Job Analysis │    │   Search         │    │ • Results        │
-│ • Matching     │    │ • Metadata       │    │                  │
-└────────────────┘    └──────────────────┘    └──────────────────┘
+        │                        │                        │
+┌───────▼────────┐    ┌──────────▼─────────┐    ┌─────────▼────────┐
+│ LangChain      │    │ Memory Service     │    │ Vector Store     │
+│ Agents         │    │ (Mem0 / Graphiti)  │    │ (ChromaDB)       │
+│ (Multi-LLM)    │    │                    │    │                  │
+│ • Groq         │    │ • User Context     │    │ • Embeddings     │
+│ • Gemini       │    │ • Long-term Memory │    │ • Similarity     │
+│ • OpenAI       │    │                    │    │   Search         │
+└────────────────┘    └────────────────────┘    └──────────────────┘
 ```
 
 ## Key Components
@@ -43,14 +44,23 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
   - Manages file-based persistence
 
 ### 2. **LangChain Agents** (`app/services/langchain_agents.py`)
-- **Role**: AI-powered document processing
+- **Role**: AI-powered document processing with Multi-LLM support
 - **Features**:
+  - **Robust Fallback**: Automatically switches between Groq, Gemini, and OpenAI
   - Structured resume parsing using Pydantic models
   - Job description analysis
   - Intelligent matching and scoring
-  - JSON response cleaning and validation
 
-### 3. **Vector Store** (`app/services/vector_store.py`)
+### 3. **Memory Service** (`app/services/memory_service.py`)
+- **Role**: Context management and personalization
+- **Providers**:
+  - **Mem0**: Local/Cloud memory storage
+  - **Graphiti**: Knowledge graph-based memory
+- **Features**:
+  - Stores user preferences and interaction history
+  - Enhances matching with historical context
+
+### 4. **Vector Store** (`app/services/vector_store.py`)
 - **Role**: Semantic similarity search
 - **Technology**: ChromaDB with persistent storage
 - **Features**:
@@ -58,7 +68,7 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
   - Metadata-rich search capabilities
   - Cosine similarity matching
 
-### 4. **Data Pipeline** (`app/services/data_pipeline.py`)
+### 5. **Data Pipeline** (`app/services/data_pipeline.py`)
 - **Role**: Bulk data processing
 - **Features**:
   - CSV/JSON batch uploads
@@ -73,7 +83,7 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
    ↓
 2. Text Extraction (file_utils.py)
    ↓
-3. LangChain Parsing (structured output)
+3. LangChain Parsing (Multi-LLM Fallback)
    ↓
 4. Vector Embedding (sentence-transformers)
    ↓
@@ -84,7 +94,7 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
 ```
 1. Job Description Input
    ↓
-2. LangChain Analysis
+2. LangChain Analysis (with Memory Context)
    ↓
 3. Vector Search (semantic similarity)
    ↓
@@ -116,7 +126,8 @@ data/
 ### Core Technologies
 - **Python 3.12+**: Primary language
 - **LangChain**: LLM orchestration and structured output
-- **OpenAI GPT-3.5-turbo**: Language model (via Groq for cost efficiency)
+- **LLM Providers**: Groq (Llama 3), Gemini (Pro), OpenAI (GPT-3.5/4)
+- **Memory**: Mem0, Graphiti
 - **ChromaDB**: Vector database with persistence
 - **Sentence Transformers**: CPU-optimized embeddings
 
