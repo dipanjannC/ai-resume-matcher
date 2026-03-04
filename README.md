@@ -74,6 +74,13 @@ python app/main.py
 # Visit http://localhost:8000
 ```
 
+### **🧪 Running Tests (TDD)**
+The project includes a comprehensive, robust test suite for the LangChain parsing engines and customizer:
+```bash
+# Run the entire test suite
+uv run pytest tests/ -v
+```
+
 ## 🏗️ **Architecture**
 
 ```

@@ -116,6 +116,7 @@ class LangChainAgents:
     def _clean_json_response(self, response_text: str) -> str:
         """
         Clean LLM response to extract valid JSON and handle null values.
+        Extremely robust against markdown wrap, missing brackets, and trailing text.
         
         Args:
             response_text: Raw response from LLM
@@ -125,59 +126,45 @@ class LangChainAgents:
         """
         logger.debug(f"Cleaning JSON response: {response_text[:200]}...")
         
-        # Remove markdown code blocks if present
-        response_text = re.sub(r'^```json\s*', '', response_text, flags=re.MULTILINE)
-        response_text = re.sub(r'^```\s*$', '', response_text, flags=re.MULTILINE)
-        response_text = response_text.strip()
+        # 1. Strip standard markdown code blocks
+        text = re.sub(r'^```json\s*', '', response_text, flags=re.MULTILINE|re.IGNORECASE)
+        text = re.sub(r'^```\s*$', '', text, flags=re.MULTILINE)
+        text = text.strip()
         
-        # Find JSON content between braces - handle nested braces
-        brace_count = 0
-        start_idx = -1
-        end_idx = -1
+        # 2. Heuristically find the largest JSON object {} structure
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
         
-        for i, char in enumerate(response_text):
-            if char == '{':
-                if start_idx == -1:
-                    start_idx = i
-                brace_count += 1
-            elif char == '}':
-                brace_count -= 1
-                if brace_count == 0 and start_idx != -1:
-                    end_idx = i
-                    break
-        
-        if start_idx != -1 and end_idx != -1:
-            json_text = response_text[start_idx:end_idx + 1]
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_text = text[start_idx:end_idx + 1]
         else:
-            json_text = response_text
-        
+            json_text = text # Fallback to original if no braces found
+            
         # Parse and clean the JSON to handle null values
         try:
             parsed_json = json.loads(json_text)
             
-            # Replace null values and fix type mismatches
+            # Replace null values and fix type mismatches generically
             def clean_nulls(obj):
                 if isinstance(obj, dict):
                     for key, value in obj.items():
                         if value is None:
-                            # Set appropriate defaults based on expected types
+                            # Heuristic defaults based on typical keys
                             if key in ['title', 'company', 'education_level', 'company_info', 'summary', 'name', 'email', 'phone', 'linkedin', 'location']:
                                 obj[key] = ""
                             elif key in ['required_skills', 'preferred_skills', 'responsibilities', 'requirements', 'technical', 'soft', 'certifications', 'languages', 'roles', 'companies', 'achievements', 'domains', 'specializations', 'interests', 'programming_languages', 'frameworks', 'tools', 'databases', 'cloud_platforms', 'key_strengths']:
                                 obj[key] = []
                             elif key in ['experience_years', 'total_years']:
                                 obj[key] = 0
-                        # Fix type mismatches for expected dictionary fields
-                        elif key in ['topics', 'tools_libraries', 'skills', 'experience', 'profile'] and isinstance(value, list) and len(value) == 0:
-                            # Convert empty list to empty dict for dictionary fields
-                            obj[key] = {}
-                        elif key == 'topics' and isinstance(value, list):
-                            # Convert list to proper topics structure
-                            obj[key] = {
-                                'domains': value if isinstance(value, list) else [],
-                                'specializations': [],
-                                'interests': []
-                            }
+                            else:
+                                obj[key] = ""
+                        elif isinstance(value, list):
+                            if len(value) == 0 and key in ['topics', 'tools_libraries', 'skills', 'experience', 'profile']:
+                                obj[key] = {}
+                            elif key == 'topics':
+                                obj[key] = {'domains': [], 'specializations': [], 'interests': []}
+                            else:
+                                obj[key] = clean_nulls(value)
                         else:
                             obj[key] = clean_nulls(value)
                 elif isinstance(obj, list):
@@ -190,10 +177,20 @@ class LangChainAgents:
             return result
             
         except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error: {e}")
-            logger.error(f"Attempted to parse: {json_text[:500]}...")
-            # If JSON parsing fails, return original text
-            return json_text
+            logger.error(f"First pass JSON decode error: {e}")
+            
+            # 3. Emergency AST Literal Eval Fallback for single quote dictionaries
+            try:
+                import ast
+                # Sometimes LLMs spit out Python dicts instead of JSON
+                parsed_ast = ast.literal_eval(json_text)
+                if isinstance(parsed_ast, dict):
+                     return json.dumps(parsed_ast)
+            except Exception:
+                pass
+                
+            logger.error(f"All parsing attempts failed. Returning raw text.")
+            return response_text
     
     async def parse_resume(self, resume_text: str) -> ResumeData:
         """
@@ -276,7 +273,7 @@ class LangChainAgents:
             logger.error(f"Failed to parse resume: {str(e)}")
             raise ResumeMatcherException(f"Resume parsing failed: {str(e)}")
     
-    # Fallback methods removed in favor of multi-model rerouting
+    # Deprecated fallback methods removed to enforce multi-model rerouting cleanly
     
     def _validate_and_fix_result_structure(self, result):
         """Validate and fix the result structure to match expected models"""

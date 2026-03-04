@@ -27,9 +27,11 @@ graph TD
 
 ## Detailed Process Flow
 
-### 1. Data Ingestion & Parsing
+### 1. Data Ingestion & Parsing (with TDD & Robust JSON)
 *   **Resume Parsing:** Read and extract text from the user's existing resume. We utilize LangChain agents and NLP to break down the resume into discrete, structured JSON components: Profile, Professional Summary, Work Experience, Education, and Skills.
-*   **Job Description Parsing:** Scrape the provided JD link or parse the raw text. Extract key entities such as required skills, expected tools/technologies, experience level, and core responsibilities.
+    *   **Robust Extraction:** The LLM's raw output is aggressively cleaned using heuristics (regex and AST fallbacks) to ensure nulls and structural errors are handled flawlessly.
+*   **Job Description Parsing:** Scrape the provided JD link or parse the raw text. Extract key entities such as required skills, expected tools/technologies, experience level, and core responsibilities into strict Pydantic models.
+    *   **TDD Validated:** This parsing layer acts as our source of truth. It is covered by a strict Test-Driven Development (TDD) pytest suite to guarantee downstream customizer stability.
 
 ### 2. Semantic Analysis & Gap Identification
 *   **Vector Matching:** Compare the resume's parsed data against the JD's requirements using vector embeddings (e.g., ChromaDB). 

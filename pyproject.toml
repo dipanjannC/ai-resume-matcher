@@ -39,3 +39,5 @@ dependencies = [
     "urllib3>=2.5.0",
     "uvicorn[standard]>=0.38.0",
 ]
+[tool.setuptools]
+packages = ["app"]
