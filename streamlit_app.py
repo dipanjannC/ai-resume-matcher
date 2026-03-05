@@ -108,62 +108,27 @@ class StreamlitApp:
         self.data_pipeline = data_pipeline
     
     def extract_job_from_url(self, url):
-        """Enhanced job description extraction from URL"""
+        """Enhanced job description extraction from URL using AI"""
         try:
-            # Validate URL
-            parsed_url = urlparse(url)
-            if not parsed_url.scheme or not parsed_url.netloc:
-                return {"error": "Invalid URL format. Please include http:// or https://"}
+            from app.services.job_scraper import job_scraper
+            import asyncio
             
-            # Enhanced headers to mimic different browsers and avoid blocking
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            }
-            
-            # Make request with extended timeout and better error handling
+            # Since streamlit runs synchronously but our scraper is async, run it in an event loop
             try:
-                response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
-                response.raise_for_status()
-            except requests.exceptions.SSLError:
-                # Retry without SSL verification as fallback
-                response = requests.get(url, headers=headers, timeout=15, allow_redirects=True, verify=False)
-                response.raise_for_status()
-            
-            # Check if we got actual content
-            if len(response.text) < 100:
-                return {"error": "URL returned very little content. The page might be protected or require login."}
-            
-            # Extract text content with enhanced processing
-            text_content = self.extract_text_from_html(response.text)
-            
-            # Clean and filter relevant content
-            cleaned_content = self.clean_job_content(text_content)
-            
-            # Extract job details using enhanced patterns
-            job_info = self.parse_job_details_enhanced(response.text, cleaned_content, url)
-            
-            # Ensure we have meaningful content (be more lenient)
-            if len(cleaned_content.strip()) < 20:
-                # If we have job title/company but little content, use original text
-                if job_info.get("title") or job_info.get("company"):
-                    cleaned_content = text_content[:2000]  # Use first 2000 chars of original
-                    if not cleaned_content.strip():
-                        cleaned_content = f"Job Title: {job_info.get('title', 'N/A')}\nCompany: {job_info.get('company', 'N/A')}\n\nJob details extracted from: {url}"
-                else:
-                    return {"error": "Could not extract meaningful job content from this URL. The page might be dynamically loaded, require login, or use JavaScript to display content."}
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+            job_data = loop.run_until_complete(job_scraper.scrape_and_parse(url))
             
             return {
                 "success": True,
-                "title": job_info.get("title", ""),
-                "company": job_info.get("company", ""),
-                "description": cleaned_content,
-                "location": job_info.get("location", ""),
-                "experience": job_info.get("experience", ""),
+                "title": job_data.title,
+                "company": job_data.company,
+                "description": job_data.raw_text,
+                "location": job_data.location if hasattr(job_data, 'location') else "",
+                "experience": str(job_data.experience_years),
                 "url": url
             }
             
@@ -177,221 +142,6 @@ class StreamlitApp:
             return {"error": f"Network error: {str(e)}"}
         except Exception as e:
             return {"error": f"Unexpected error processing URL: {str(e)}"}
-    
-    def extract_text_from_html(self, html_content):
-        """Enhanced text extraction from HTML content"""
-        # Remove unwanted tags and their content
-        unwanted_tags = ['script', 'style', 'nav', 'header', 'footer', 'aside', 'noscript']
-        for tag in unwanted_tags:
-            html_content = re.sub(f'<{tag}[^>]*>.*?</{tag}>', '', html_content, flags=re.DOTALL | re.IGNORECASE)
-        
-        # Convert some HTML elements to meaningful text
-        html_content = re.sub(r'<br[^>]*>', '\n', html_content, flags=re.IGNORECASE)
-        html_content = re.sub(r'<p[^>]*>', '\n', html_content, flags=re.IGNORECASE)
-        html_content = re.sub(r'</p>', '\n', html_content, flags=re.IGNORECASE)
-        html_content = re.sub(r'<div[^>]*>', '\n', html_content, flags=re.IGNORECASE)
-        html_content = re.sub(r'</div>', '\n', html_content, flags=re.IGNORECASE)
-        html_content = re.sub(r'<li[^>]*>', '\n• ', html_content, flags=re.IGNORECASE)
-        html_content = re.sub(r'</li>', '\n', html_content, flags=re.IGNORECASE)
-        
-        # Remove remaining HTML tags
-        text = re.sub(r'<[^>]+>', ' ', html_content)
-        
-        # Decode HTML entities (extended list)
-        html_entities = {
-            '&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', 
-            '&quot;': '"', '&#39;': "'", '&apos;': "'", '&cent;': '¢', 
-            '&pound;': '£', '&yen;': '¥', '&euro;': '€', '&copy;': '©', 
-            '&reg;': '®', '&trade;': '™', '&#8211;': '–', '&#8212;': '—',
-            '&#8216;': ''', '&#8217;': ''', '&#8220;': '"', '&#8221;': '"',
-            '&#8226;': '•', '&#8230;': '…', '&mdash;': '—', '&ndash;': '–',
-            '&rsquo;': "'", '&lsquo;': "'", '&rdquo;': '"', '&ldquo;': '"',
-            '&hellip;': '…', '&bull;': '•'
-        }
-        
-        for entity, replacement in html_entities.items():
-            text = text.replace(entity, replacement)
-        
-        # Clean up whitespace and formatting
-        text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
-        text = re.sub(r'\n\s*\n', '\n', text)  # Multiple newlines to single
-        text = re.sub(r'^\s+|\s+$', '', text, flags=re.MULTILINE)  # Trim lines
-        
-        # Remove excessive whitespace while preserving some structure
-        lines = text.split('\n')
-        clean_lines = []
-        for line in lines:
-            line = line.strip()
-            if line and len(line) > 2:  # Keep lines with meaningful content
-                clean_lines.append(line)
-        
-        return '\n'.join(clean_lines)
-    
-    def clean_job_content(self, text_content):
-        """Clean and filter job-relevant content"""
-        # Remove common website navigation and footer content
-        lines = text_content.split('\n')
-        filtered_lines = []
-        
-        skip_patterns = [
-            r'cookie', r'privacy policy', r'terms', r'subscribe', r'newsletter',
-            r'follow us', r'social media', r'linkedin', r'twitter', r'facebook',
-            r'navigation', r'menu', r'footer', r'header', r'sidebar',
-            r'advertisement', r'ad ', r'sponsored', r'related jobs'
-        ]
-        
-        for line in lines:
-            line = line.strip()
-            if len(line) < 10:  # Skip very short lines
-                continue
-            
-            # Skip lines that match common non-job patterns
-            if any(re.search(pattern, line.lower()) for pattern in skip_patterns):
-                continue
-            
-            # Skip lines that are mostly punctuation or numbers
-            if len(re.sub(r'[^a-zA-Z]', '', line)) < len(line) * 0.5:
-                continue
-                
-            filtered_lines.append(line)
-        
-        # Join and limit content length
-        cleaned_content = '\n'.join(filtered_lines)
-        
-        # Limit to reasonable length (about 5000 characters for job descriptions)
-        if len(cleaned_content) > 5000:
-            cleaned_content = cleaned_content[:5000] + "...\n\n[Content truncated for processing]"
-        
-        return cleaned_content
-    
-    def parse_job_details_enhanced(self, html_content, text_content, url):
-        """Enhanced job detail parsing with multiple strategies"""
-        job_info = {"title": "", "company": "", "location": "", "experience": ""}
-        
-        # Strategy 1: Extract from HTML title tag
-        title_match = re.search(r'<title[^>]*>([^<]+)</title>', html_content, re.IGNORECASE)
-        if title_match:
-            title_text = title_match.group(1).strip()
-            # Common patterns in job posting titles
-            patterns = [
-                r'(.+?)\s*[-|–]\s*(.+?)\s*[-|–]\s*(.+)',  # Title - Company - Site
-                r'(.+?)\s*[-|–]\s*(.+)',  # Title - Company
-                r'(.+?)\s*at\s*(.+)',  # Title at Company
-            ]
-            
-            for pattern in patterns:
-                match = re.search(pattern, title_text, re.IGNORECASE)
-                if match:
-                    job_info["title"] = match.group(1).strip()
-                    job_info["company"] = match.group(2).strip()
-                    break
-            
-            # If no pattern matched, use whole title
-            if not job_info["title"]:
-                job_info["title"] = title_text
-        
-        # Strategy 2: Enhanced text content parsing
-        enhanced_patterns = {
-            "title": [
-                r'job title[:\s]*([^\n\r]+)',
-                r'position[:\s]*([^\n\r]+)',
-                r'role[:\s]*([^\n\r]+)',
-                r'we are hiring[:\s]*([^\n\r]+)',
-                r'looking for[:\s]*([^\n\r]+)',
-                r'join our team as[:\s]*([^\n\r]+)',
-                r'<h1[^>]*>([^<]+)</h1>',  # H1 tags often contain job titles
-                r'<h2[^>]*>([^<]+)</h2>',  # H2 tags as fallback
-            ],
-            "company": [
-                r'company[:\s]*([^\n\r]+)',
-                r'employer[:\s]*([^\n\r]+)',
-                r'organization[:\s]*([^\n\r]+)',
-                r'about\s+([a-zA-Z][a-zA-Z\s&\.]+?)(?:\n|is|was)',
-                r'join\s+([a-zA-Z][a-zA-Z\s&\.]+?)(?:\n|team|today)',
-                r'at\s+([a-zA-Z][a-zA-Z\s&\.]+?)(?:\n|,|\.|we)',
-            ],
-            "location": [
-                r'location[:\s]*([^\n\r]+)',
-                r'based in[:\s]*([^\n\r]+)',
-                r'office[:\s]*([^\n\r]+)',
-                r'remote',
-                r'work from home',
-                r'([a-zA-Z\s]+,\s*[A-Z]{2,})',  # City, State/Country pattern
-            ],
-            "experience": [
-                r'(\d+)[\+\-\s]*years?\s*(?:of\s*)?experience',
-                r'experience[:\s]*(\d+[\+\-\s]*years?)',
-                r'minimum\s*(\d+\s*years?)',
-                r'(\d+)\s*to\s*(\d+)\s*years?',
-            ]
-        }
-        
-        # Apply enhanced patterns
-        for field, patterns in enhanced_patterns.items():
-            if job_info.get(field):  # Skip if already found
-                continue
-                
-            for pattern in patterns:
-                # Try HTML first, then text content
-                for content in [html_content, text_content]:
-                    match = re.search(pattern, content, re.IGNORECASE)
-                    if match:
-                        if field == "experience" and len(match.groups()) > 1:
-                            # Handle range patterns
-                            job_info[field] = f"{match.group(1)}-{match.group(2)} years"
-                        else:
-                            job_info[field] = match.group(1).strip()
-                        break
-                if job_info.get(field):
-                    break
-        
-        # Strategy 3: JSON-LD structured data extraction
-        json_ld_match = re.search(r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', 
-                                 html_content, re.IGNORECASE | re.DOTALL)
-        if json_ld_match:
-            try:
-                json_data = json.loads(json_ld_match.group(1))
-                if isinstance(json_data, dict):
-                    # Common schema.org JobPosting structure
-                    if json_data.get('@type') == 'JobPosting' or 'JobPosting' in str(json_data.get('@type', '')):
-                        if not job_info["title"] and json_data.get('title'):
-                            job_info["title"] = json_data['title']
-                        if not job_info["company"] and json_data.get('hiringOrganization', {}).get('name'):
-                            job_info["company"] = json_data['hiringOrganization']['name']
-                        if not job_info["location"] and json_data.get('jobLocation', {}).get('address'):
-                            location_data = json_data['jobLocation']['address']
-                            if isinstance(location_data, dict):
-                                location_parts = []
-                                if location_data.get('addressLocality'):
-                                    location_parts.append(location_data['addressLocality'])
-                                if location_data.get('addressRegion'):
-                                    location_parts.append(location_data['addressRegion'])
-                                job_info["location"] = ", ".join(location_parts)
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass  # Ignore JSON parsing errors
-        
-        # Clean up extracted data
-        for field in job_info:
-            if job_info[field]:
-                # Remove extra whitespace and clean up
-                job_info[field] = re.sub(r'\s+', ' ', job_info[field]).strip()
-                # Remove common prefixes/suffixes
-                job_info[field] = re.sub(r'^(job\s*)?title[:\s]*', '', job_info[field], flags=re.IGNORECASE)
-                job_info[field] = re.sub(r'^company[:\s]*', '', job_info[field], flags=re.IGNORECASE)
-                # Limit length
-                if len(job_info[field]) > 100:
-                    job_info[field] = job_info[field][:100] + "..."
-        
-        # Fallback: extract company from domain
-        if not job_info["company"]:
-            parsed_url = urlparse(url)
-            domain = parsed_url.netloc.lower()
-            if domain.startswith('www.'):
-                domain = domain[4:]
-            company_from_domain = domain.split('.')[0].replace('-', ' ').title()
-            job_info["company"] = company_from_domain
-        
-        return job_info
     
     def parse_job_details(self, text_content, url):
         """Parse job title and company from text content"""
@@ -1273,41 +1023,25 @@ class StreamlitApp:
     
     def resume_customizer_page(self):
         """Resume customization and cover letter generation page"""
-        st.header("✏️ Resume Customizer & Cover Letter Generator")
-        st.markdown("**Customize resumes and generate cover letters based on specific job requirements**")
+        from app.services.document_generator import document_generator
+        
+        st.header("✨ Agentic Resume Customizer & Cover Letter Generator")
+        st.markdown("**Automatically research target companies and customize your resume to match exactly what they are looking for.**")
         
         # Get stored resumes and jobs
         stored_jobs = get_stored_jobs()
         processed_resumes = get_processed_resumes()
-        
-        if not stored_jobs:
-            st.warning("No job descriptions available. Please add jobs in the Job Management page first.")
-            return
             
         if not processed_resumes:
-            st.warning("No processed resumes available. Please upload resumes first.")
+            st.warning("No processed resumes available. Please upload your base resume first.")
             return
-        
-        # Main tabs
-        tab1, tab2, tab3 = st.tabs(["✏️ Customize Resume", "📝 Generate Cover Letter", "📋 Customization Analysis"])
-        
-        with tab1:
-            self.resume_customization_tab(stored_jobs, processed_resumes)
-        
-        with tab2:
-            self.cover_letter_tab(stored_jobs, processed_resumes)
             
-        with tab3:
-            self.customization_analysis_tab(stored_jobs, processed_resumes)
-
-    def resume_customization_tab(self, stored_jobs, processed_resumes):
-        """Resume customization interface"""
-        st.subheader("✏️ Customize Resume for Specific Job")
+        st.markdown("### 1. Identify Target")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Select Resume**")
+            st.markdown("**Select Candidate Resume**")
             resume_options = {}
             for resume in processed_resumes:
                 display_name = f"{resume.get('filename', 'Unknown')}"
@@ -1315,14 +1049,16 @@ class StreamlitApp:
                     display_name = f"{resume['profile']['name']} - {resume.get('filename', 'Unknown')}"
                 resume_options[display_name] = resume['id']
             
-            selected_resume_name = st.selectbox("Choose resume to customize:", list(resume_options.keys()))
+            selected_resume_name = st.selectbox("Choose base resume:", list(resume_options.keys()))
             selected_resume_id = resume_options[selected_resume_name] if selected_resume_name else None
-        
-        with col2:
-            st.markdown("**Select Target Job**")
             
-            # Job input options
-            job_input_type = st.radio("Job Source:", ["Stored Jobs", "Job Link/Description"], horizontal=True)
+            # Extract basic info for the cover letter / headers later
+            candidate_name = selected_resume_name.split(' - ')[0] if ' - ' in selected_resume_name else "Candidate"
+            
+        with col2:
+            st.markdown("**Provide Job Opportunity**")
+            
+            job_input_type = st.radio("Provide context via:", ["Job Link (Auto-Extract)", "Stored Jobs"], horizontal=True)
             
             selected_job_id = None
             job_description_text = None
@@ -1339,523 +1075,122 @@ class StreamlitApp:
                     selected_job_name = st.selectbox("Choose target job:", list(job_options.keys()))
                     selected_job_id = job_options[selected_job_name] if selected_job_name else None
                 else:
-                    st.info("No stored jobs available. Please add jobs first or use the 'Job Link/Description' option.")
+                    st.info("No stored jobs available. Use the Job Link tab.")
             
-            else:  # Job Link/Description
-                st.markdown("**Enter Job Details**")
+            else:
+                job_link = st.text_input("🔗 Job Link URL", placeholder="https://careers.company.com/job/123")
                 
-                # Job link input and extraction
-                job_link = st.text_input(
-                    "🔗 Job Link:", 
-                    placeholder="https://company.com/careers/job-id",
-                    help="Paste a job posting URL to automatically extract job details"
-                )
-                
-                # Auto-extract from URL
                 if job_link and job_link.strip():
-                    col_extract, col_status = st.columns([1, 2])
-                    
-                    with col_extract:
-                        if st.button("🤖 Extract from URL", type="secondary"):
-                            with st.spinner("Extracting job details from URL..."):
-                                extraction_result = self.extract_job_from_url(job_link.strip())
-                                
-                                if extraction_result.get("success"):
-                                    st.session_state.extracted_job_title = extraction_result.get("title", "")
-                                    st.session_state.extracted_company = extraction_result.get("company", "")
-                                    st.session_state.extracted_description = extraction_result.get("description", "")
-                                    st.session_state.extracted_location = extraction_result.get("location", "")
-                                    st.session_state.extracted_experience = extraction_result.get("experience", "")
-                                    st.session_state.extraction_success = True
-                                    
-                                    # Show success with extracted details
-                                    st.success("✅ Job details extracted successfully!")
-                                    with st.expander("🔍 Extracted Information Preview", expanded=True):
-                                        col1, col2 = st.columns(2)
-                                        with col1:
-                                            if extraction_result.get("title"):
-                                                st.write(f"**Job Title:** {extraction_result.get('title')}")
-                                            if extraction_result.get("company"):
-                                                st.write(f"**Company:** {extraction_result.get('company')}")
-                                        with col2:
-                                            if extraction_result.get("location"):
-                                                st.write(f"**Location:** {extraction_result.get('location')}")
-                                            if extraction_result.get("experience"):
-                                                st.write(f"**Experience:** {extraction_result.get('experience')}")
-                                        
-                                        desc_preview = extraction_result.get("description", "")[:200]
-                                        if desc_preview:
-                                            st.write(f"**Description Preview:** {desc_preview}...")
-                                    
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ Extraction failed: {extraction_result.get('error', 'Unknown error')}")
-                                    st.info("💡 **Tip:** Try a different job posting URL or copy the job description manually.")
-                    
-                    with col_status:
-                        if hasattr(st.session_state, 'extraction_success') and st.session_state.extraction_success:
-                            st.success("✅ Job details extracted and populated below")
-                        else:
-                            st.info("💡 Click 'Extract from URL' to automatically fill job details")
+                    if st.button("🤖 Extract & Structure Job", use_container_width=True, type="primary"):
+                        with st.status("🔍 Extracting job requirements from URL...") as status:
+                            st.write("Scraping job page...")
+                            extraction_result = self.extract_job_from_url(job_link.strip())
+                            if extraction_result.get("success"):
+                                st.session_state.customizer_job_title = extraction_result.get("title", "")
+                                st.session_state.customizer_company = extraction_result.get("company", "")
+                                st.session_state.customizer_description = extraction_result.get("description", "")
+                                st.session_state.customizer_source_url = job_link.strip()
+                                status.update(label="✅ Job extracted!", state="complete")
+                            else:
+                                status.update(label=f"❌ Extraction failed: {extraction_result.get('error')}", state="error")
                 
-                # Manual job details (with auto-populated values if extracted)
-                col2a, col2b = st.columns(2)
-                with col2a:
-                    job_title = st.text_input(
-                        "📋 Job Title:", 
-                        value=getattr(st.session_state, 'extracted_job_title', ''),
-                        placeholder="Software Engineer"
-                    )
-                with col2b:
-                    company_name = st.text_input(
-                        "🏢 Company:", 
-                        value=getattr(st.session_state, 'extracted_company', ''),
-                        placeholder="Tech Corp"
-                    )
-                
-                # Job description
-                job_description_text = st.text_area(
-                    "📝 Job Description:",
-                    value=getattr(st.session_state, 'extracted_description', ''),
-                    height=200,
-                    placeholder="Paste the complete job description here...\n\nInclude requirements, responsibilities, qualifications, etc.",
-                    help="Copy and paste the full job description from the job posting or extract it from the URL above"
-                )
-                
-                # Clear extracted data button
-                if hasattr(st.session_state, 'extraction_success') and st.session_state.extraction_success:
-                    if st.button("🗑️ Clear Extracted Data", type="secondary"):
-                        for key in ['extracted_job_title', 'extracted_company', 'extracted_description', 'extracted_location', 'extracted_experience', 'extraction_success']:
-                            if hasattr(st.session_state, key):
-                                delattr(st.session_state, key)
-                        st.rerun()
-                
-                # Show URL preview if provided
-                if job_link and job_link.strip():
-                    with st.expander("🔗 Job Link Preview", expanded=False):
-                        st.markdown(f"**URL:** {job_link}")
-                        st.markdown("**Note:** This URL will be referenced in your customized resume as the source job posting")
-                
-                # Validate inputs
-                if job_description_text and job_title:
-                    selected_job_id = "custom_job"  # Flag to indicate custom job
+                # Show extracted info as a read-only structured card (no editable textarea)
+                if getattr(st.session_state, 'customizer_job_title', ''):
+                    job_title = st.session_state.customizer_job_title
+                    company_name = st.session_state.customizer_company
+                    st.success(f"**{job_title}** at **{company_name or 'Company TBD'}**")
+                    with st.expander("📋 View Extracted Requirements", expanded=False):
+                        desc = getattr(st.session_state, 'customizer_description', '')
+                        st.text_area("", value=desc, height=180, disabled=True, label_visibility="collapsed")
+                    selected_job_id = "custom_job"
+                    job_description_text = getattr(st.session_state, 'customizer_description', '')
+                else:
+                    st.info("Paste a job URL above and click Extract to auto-populate the job requirements.")
         
-        # Show validation status
+        st.markdown("---")
+        st.markdown("### 2. Agentic Customization Pipeline")
+        st.markdown("The agent will research the target company on the web to ingest its core values, optimize your resume keywords, and compile a targeted cover letter.")
+        
         if selected_resume_id and (selected_job_id or (job_description_text and job_title)):
-            if st.button("🎯 Customize Resume", type="primary"):
-                with st.spinner("Customizing resume..."):
-                    # Handle custom job description
+            if st.button("🚀 Run Agentic Workflow (Takes ~20s)", type="primary", use_container_width=True):
+                
+                # Fetch original full data so we can pass it to DocumentGenerator later
+                original_resume_data = asyncio.run(self.resume_processor._get_resume_data(selected_resume_id))
+
+                with st.spinner("🔍 Phase 1: Researching company culture & analyzing role fit..."):
                     if selected_job_id == "custom_job":
-                        result = self.customize_resume_for_custom_job(
-                            selected_resume_id, 
-                            job_description_text or "", 
-                            job_title or "Unknown Position", 
-                            company_name or ""
+                        resume_result = self.customize_resume_for_custom_job(
+                            selected_resume_id, job_description_text or "", job_title or "Unknown", company_name or ""
+                        )
+                        cover_result = self.generate_cover_letter_for_custom_job(
+                            selected_resume_id, job_description_text or "", job_title or "Unknown", company_name or ""
                         )
                     else:
-                        result = self.customize_resume_for_job(selected_resume_id, selected_job_id or "")
+                        resume_result = self.customize_resume_for_job(selected_resume_id, selected_job_id)
+                        cover_result = self.generate_cover_letter_for_job(selected_resume_id, selected_job_id)
+                
+                if resume_result and resume_result.get('success'):
+                    st.success("✅ Workflow Complete! Review the generated artifacts below.")
                     
-                    if result and result.get('success'):
-                        st.success("✅ Resume customization completed!")
+                    custom_data = resume_result.get('customized_resume', {})
+                    comp_name = company_name if company_name else resume_result.get('company', 'Target Company')
+                    
+                    # Display Agentic Reasoning
+                    st.markdown("#### 🧠 Agentic Reasoning Trace")
+                    st.info(resume_result.get('agentic_reasoning', custom_data.get('agentic_reasoning', 'No reasoning trace provided.')))
+                    
+                    # Display Side-by-Side Outputs
+                    col_res, col_cov = st.columns(2)
+                    
+                    with col_res:
+                        st.markdown("#### 📄 Customized Resume Changes")
+                        st.markdown("**New Profile Summary:**")
+                        st.write(custom_data.get('customized_summary', 'N/A'))
                         
-                        # Display customization results in improved layout
-                        customized_data = result.get('customized_resume', {})
+                        st.markdown("**Emphasized Skills:**")
+                        st.write(" • ".join(custom_data.get('emphasized_skills', [])))
                         
-                        # Create columns for content and actions
-                        content_col, action_col = st.columns([3, 1])
+                        with st.expander("Experience Modifications", expanded=False):
+                            for mod in custom_data.get('experience_modifications', []):
+                                st.markdown(f"**{mod.get('section_or_role', 'Experience')}**")
+                                for sug in mod.get('suggestions', []):
+                                    st.write(f"- {sug}")
+                                    
+                        # PDF Export
+                        try:
+                            pdf_bytes = document_generator.generate_resume_pdf(custom_data, candidate_name, original_resume_data)
+                            st.download_button(
+                                label="📥 Download Adjusted Resume (PDF)",
+                                data=pdf_bytes,
+                                file_name=f"{candidate_name.replace(' ', '_')}_{comp_name.replace(' ', '_')}_Resume.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        except Exception as e:
+                            st.error(f"Failed to generate Resume PDF: {str(e)}")
+                            
+                    with col_cov:
+                        st.markdown("#### ✉️ Tailored Cover Letter")
+                        cover_text = cover_result.get('cover_letter', 'Failed to generate cover letter.') if cover_result and cover_result.get('success') else "Generation Failed."
                         
-                        with content_col:
-                            if customized_data.get('customized_summary'):
-                                st.subheader("📝 Enhanced Summary")
-                                enhanced_summary = st.text_area(
-                                    "Customized Professional Summary", 
-                                    value=customized_data['customized_summary'], 
-                                    height=120,
-                                    key="customized_summary_edit",
-                                    help="You can edit this summary before copying or downloading"
-                                )
-                            
-                            if customized_data.get('emphasized_skills'):
-                                st.subheader("🔍 Emphasized Skills")
-                                skills_text = " • ".join(customized_data['emphasized_skills'])
-                                st.success(f"**Prioritized Skills:** {skills_text}")
-                            
-                            if customized_data.get('keyword_suggestions'):
-                                st.subheader("🏷️ Recommended Keywords")
-                                keywords_text = ", ".join(customized_data['keyword_suggestions'])
-                                st.write(keywords_text)
-                                
-                                # Make keywords copyable
-                                st.code(keywords_text, language="text")
-                            
-                            if customized_data.get('customization_summary'):
-                                st.subheader("📋 Customization Summary")
-                                st.info(customized_data['customization_summary'])
+                        st.text_area("Generated Cover Letter", value=cover_text, height=300)
                         
-                        with action_col:
-                            st.markdown("**📥 Download Options**")
-                            
-                            # Prepare full customized resume text
-                            job_info = job_title if job_title else result.get('job_title', 'Position')
-                            company_info = company_name if company_name else result.get('company', 'Company')
-                            
-                            full_resume_text = f"""
-CUSTOMIZED RESUME FOR: {job_info} at {company_info}
-
-ENHANCED PROFESSIONAL SUMMARY:
-{customized_data.get('customized_summary', 'N/A')}
-
-EMPHASIZED SKILLS:
-{' • '.join(customized_data.get('emphasized_skills', []))}
-
-RECOMMENDED KEYWORDS:
-{', '.join(customized_data.get('keyword_suggestions', []))}
-
-CUSTOMIZATION SUMMARY:
-{customized_data.get('customization_summary', 'N/A')}
-
-Original Resume: {selected_resume_name}
-Target Position: {job_info}
-Company: {company_info}
-Generated: {result.get('generated_at', 'Unknown')}
-                            """.strip()
-                            
-                            # Download as TXT
-                            if st.download_button(
-                                label="📄 Download TXT",
-                                data=full_resume_text,
-                                file_name=f"customized_resume_{job_info.lower().replace(' ', '_')}.txt",
-                                mime="text/plain"
-                            ):
-                                st.success("✅ Resume downloaded!")
-                            
-                            # Download as HTML
-                            html_resume = f"""
-                            <html>
-                            <head>
-                                <title>Customized Resume - {job_info}</title>
-                                <style>
-                                    body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
-                                    h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; }}
-                                    h2 {{ color: #34495e; margin-top: 30px; }}
-                                    .summary {{ background: #f8f9fa; padding: 15px; border-left: 4px solid #3498db; }}
-                                    .skills {{ background: #e8f5e8; padding: 10px; border-radius: 5px; }}
-                                    .keywords {{ background: #fff3cd; padding: 10px; border-radius: 5px; }}
-                                </style>
-                            </head>
-                            <body>
-                                <h1>Customized Resume</h1>
-                                <p><strong>Position:</strong> {job_info}<br>
-                                <strong>Company:</strong> {company_info}<br>
-                                <strong>Original Resume:</strong> {selected_resume_name}</p>
-                                
-                                <h2>Enhanced Professional Summary</h2>
-                                <div class="summary">{customized_data.get('customized_summary', 'N/A')}</div>
-                                
-                                <h2>Emphasized Skills</h2>
-                                <div class="skills">{' • '.join(customized_data.get('emphasized_skills', []))}</div>
-                                
-                                <h2>Recommended Keywords</h2>
-                                <div class="keywords">{', '.join(customized_data.get('keyword_suggestions', []))}</div>
-                                
-                                <h2>Customization Summary</h2>
-                                <p>{customized_data.get('customization_summary', 'N/A')}</p>
-                            </body>
-                            </html>
-                            """
-                            
-                            if st.download_button(
-                                label="🌐 Download HTML",
-                                data=html_resume,
-                                file_name=f"customized_resume_{job_info.lower().replace(' ', '_')}.html",
-                                mime="text/html"
-                            ):
-                                st.success("✅ HTML downloaded!")
-                            
-                            # Download as PDF
-                            try:
-                                # Prepare resume data for PDF generation
-                                resume_pdf_data = {
-                                    'profile': {
-                                        'name': selected_resume_name,
-                                        'phone': '',  # Would need to extract from original resume
-                                        'email': '',  # Would need to extract from original resume
-                                        'linkedin': '',
-                                        'location': ''
-                                    },
-                                    'summary': customized_data.get('customized_summary', ''),
-                                    'skills': customized_data.get('emphasized_skills', []),
-                                    'experience': [],  # Would need original resume experience
-                                    'education': [],   # Would need original resume education
-                                    'projects': []     # Would need original resume projects
-                                }
-                                
-                                pdf_bytes = generate_resume_pdf(resume_pdf_data)
-                                
-                                if st.download_button(
-                                    label="📄 Download PDF",
-                                    data=pdf_bytes,
-                                    file_name=f"customized_resume_{job_info.lower().replace(' ', '_')}.pdf",
-                                    mime="application/pdf"
-                                ):
-                                    st.success("✅ PDF downloaded!")
-                            except Exception as e:
-                                st.warning(f"PDF generation temporarily unavailable: {str(e)}")
-                                logger.error(f"PDF generation error: {str(e)}")
-                            
-                            # Copy button
-                            if st.button("📋 Copy All", help="Display text for easy copying"):
-                                st.code(full_resume_text, language="text")
-                                st.success("✅ Text displayed above - select and copy!")
-                    else:
-                        st.error(f"❌ Failed to customize resume: {result.get('error', 'Unknown error')}")
-        elif selected_resume_id:
-            if job_input_type == "Job Link/Description":
-                if not job_description_text:
-                    st.warning("⚠️ Please enter the job description")
-                elif not job_title:
-                    st.warning("⚠️ Please enter the job title")
-            else:
-                st.info("💡 Select a target job to continue")
-
-    def cover_letter_tab(self, stored_jobs, processed_resumes):
-        """Cover letter generation interface"""
-        st.subheader("📝 Generate Personalized Cover Letter")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**Select Candidate Resume**")
-            resume_options = {}
-            for resume in processed_resumes:
-                display_name = f"{resume.get('filename', 'Unknown')}"
-                if resume.get('profile', {}).get('name'):
-                    display_name = f"{resume['profile']['name']} - {resume.get('filename', 'Unknown')}"
-                resume_options[display_name] = resume['id']
-            
-            selected_resume_name = st.selectbox("Choose candidate:", list(resume_options.keys()), key="cover_resume")
-            selected_resume_id = resume_options[selected_resume_name] if selected_resume_name else None
-        
-        with col2:
-            st.markdown("**Select Job Input Method**")
-            job_input_type_cover = st.radio(
-                "Choose input method:",
-                options=["Stored Jobs", "Job Link/Description"],
-                key="cover_job_input_type",
-                help="Select from stored jobs or paste a job description"
-            )
-            
-            if job_input_type_cover == "Stored Jobs":
-                job_options = {}
-                for job in stored_jobs:
-                    display_name = f"{job['title']} - {job['company']}"
-                    job_options[display_name] = job['id']
-                
-                selected_job_name = st.selectbox("Choose position:", list(job_options.keys()), key="cover_job")
-                selected_job_id = job_options[selected_job_name] if selected_job_name else None
-                job_description_text_cover = None
-                job_title_cover = None
-                company_name_cover = None
-            else:
-                # Custom job description input
-                selected_job_id = "custom_job"
-                
-                job_title_cover = st.text_input(
-                    "Job Title (Optional):",
-                    placeholder="e.g., Senior Software Engineer",
-                    key="cover_job_title"
-                )
-                
-                company_name_cover = st.text_input(
-                    "Company Name (Optional):",
-                    placeholder="e.g., Tech Corp",
-                    key="cover_company_name"
-                )
-                
-                job_description_text_cover = st.text_area(
-                    "Job Description/Link:",
-                    placeholder="Paste the job description or link here...",
-                    height=150,
-                    key="cover_job_description"
-                )
-        
-        # Generate cover letter button and logic
-        if selected_resume_id:
-            if job_input_type_cover == "Stored Jobs" and selected_job_id:
-                if st.button("📝 Generate Cover Letter", type="primary", key="generate_cover_stored"):
-                    with st.spinner("Generating personalized cover letter..."):
-                        result = self.generate_cover_letter_for_job(selected_resume_id, selected_job_id)
-                        self._display_cover_letter_result(result)
-            elif job_input_type_cover == "Job Link/Description" and job_description_text_cover:
-                if st.button("📝 Generate Cover Letter", type="primary", key="generate_cover_custom"):
-                    with st.spinner("Generating personalized cover letter..."):
-                        result = self.generate_cover_letter_for_custom_job(
-                            selected_resume_id,
-                            job_description_text_cover or "",
-                            job_title_cover or "Unknown Position",
-                            company_name_cover or ""
-                        )
-                        self._display_cover_letter_result(result)
-            elif job_input_type_cover == "Job Link/Description" and not job_description_text_cover:
-                st.warning("⚠️ Please enter the job description")
-    
-    def _display_cover_letter_result(self, result):
-        """Display cover letter generation result"""
-        if result and result.get('success'):
-            st.success("✅ Cover letter generated successfully!")
-            
-            # Display cover letter
-            cover_letter = result.get('cover_letter', '') or ""
-            
-            st.subheader(f"📝 Cover Letter for {result.get('job_title', 'Position')}")
-            
-            # Create two columns for better layout
-            col1, col2 = st.columns([3, 1])
-            
-            with col1:
-                # Display cover letter in an easy-to-copy format
-                st.markdown("**Generated Cover Letter:**")
-                
-                # Use code block for easy copying
-                st.code(cover_letter, language="text")
-                
-                # Also provide a text area for editing
-                edited_cover_letter = st.text_area(
-                    "Edit Cover Letter (Optional)", 
-                    value=cover_letter, 
-                    height=300,
-                    help="You can edit the cover letter before copying or downloading",
-                    key="edit_cover_letter"
-                ) or cover_letter
-            
-            with col2:
-                st.markdown("**Actions:**")
-                
-                # Copy to clipboard button (using JavaScript)
-                if st.button("📋 Copy to Clipboard", help="Copy the cover letter to your clipboard", key="copy_cover"):
-                    # Use Streamlit's built-in copy functionality
-                    st.write("📋 **Copy this text:**")
-                    st.code(edited_cover_letter, language="text")
-                    st.success("✅ Text displayed above for copying!")
-                
-                # Download option
-                if st.download_button(
-                    label="📄 Download as TXT",
-                    data=edited_cover_letter or "",
-                    file_name=f"cover_letter_{result.get('candidate_name', 'candidate')}_{result.get('company', 'company')}.txt",
-                    mime="text/plain",
-                    key="download_cover_txt"
-                ):
-                    st.success("Cover letter downloaded!")
-                
-                # Simple HTML download for better formatting
-                html_content = f"""
-                <html>
-                <head><title>Cover Letter</title></head>
-                <body>
-                <h2>Cover Letter for {result.get('job_title', 'Position')}</h2>
-                <pre style="font-family: Arial; white-space: pre-wrap;">{edited_cover_letter}</pre>
-                </body>
-                </html>
-                """
-                if st.download_button(
-                    label="📄 Download as HTML",
-                    data=html_content,
-                    file_name=f"cover_letter_{result.get('candidate_name', 'candidate')}_{result.get('company', 'company')}.html",
-                    mime="text/html",
-                    key="download_cover_html"
-                ):
-                    st.success("Cover letter downloaded as HTML!")
-            
-            # Additional formatting options
-            with st.expander("📋 Formatted for Email", expanded=False):
-                st.markdown("**Email-ready format:**")
-                email_format = cover_letter.replace('\n\n', '\n').replace('\n', '<br>')
-                st.markdown(email_format, unsafe_allow_html=True)
-                
-            # Character and word count
-            safe_text = edited_cover_letter or ""
-            char_count = len(safe_text)
-            word_count = len(safe_text.split()) if safe_text else 0
-            st.caption(f"📊 Character count: {char_count} | Word count: {word_count}")
+                        # PDF Export
+                        try:
+                            cv_pdf = document_generator.generate_cover_letter_pdf(cover_text, candidate_name, comp_name)
+                            st.download_button(
+                                label="📥 Download Cover Letter (PDF)",
+                                data=cv_pdf,
+                                file_name=f"{candidate_name.replace(' ', '_')}_{comp_name.replace(' ', '_')}_CoverLetter.pdf",
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        except Exception as e:
+                            st.error(f"Failed to generate Cover Letter PDF: {str(e)}")
+                else:
+                    st.error(f"❌ Customization failed: {resume_result.get('error', 'Unknown Error')}")
         else:
-            st.error(f"❌ Failed to generate cover letter: {result.get('error', 'Unknown error')}")
-
-    def customization_analysis_tab(self, stored_jobs, processed_resumes):
-        """Customization analysis and suggestions interface"""
-        st.subheader("📋 Resume Customization Analysis")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**Select Resume to Analyze**")
-            resume_options = {}
-            for resume in processed_resumes:
-                display_name = f"{resume.get('filename', 'Unknown')}"
-                if resume.get('profile', {}).get('name'):
-                    display_name = f"{resume['profile']['name']} - {resume.get('filename', 'Unknown')}"
-                resume_options[display_name] = resume['id']
-            
-            selected_resume_name = st.selectbox("Choose resume:", list(resume_options.keys()), key="analysis_resume")
-            selected_resume_id = resume_options[selected_resume_name] if selected_resume_name else None
-        
-        with col2:
-            st.markdown("**Select Target Job**")
-            job_options = {}
-            for job in stored_jobs:
-                display_name = f"{job['title']} - {job['company']}"
-                job_options[display_name] = job['id']
-            
-            selected_job_name = st.selectbox("Choose job:", list(job_options.keys()), key="analysis_job")
-            selected_job_id = job_options[selected_job_name] if selected_job_name else None
-        
-        if selected_resume_id and selected_job_id:
-            if st.button("🔍 Analyze Customization Needs", type="primary"):
-                with st.spinner("Analyzing customization requirements..."):
-                    result = self.analyze_customization_needs(selected_resume_id, selected_job_id)
-                    if result and result.get('success'):
-                        st.success("✅ Analysis completed!")
-                        
-                        suggestions = result.get('suggestions', {})
-                        
-                        # Display skill gaps
-                        if suggestions.get('skill_gaps'):
-                            st.subheader("⚠️ Skill Gaps")
-                            for gap in suggestions['skill_gaps']:
-                                st.error(f"Missing: {gap}")
-                        
-                        # Display experience recommendations
-                        if suggestions.get('experience_recommendations'):
-                            st.subheader("💼 Experience Recommendations")
-                            for rec in suggestions['experience_recommendations']:
-                                st.info(rec)
-                        
-                        # Display keyword suggestions
-                        if suggestions.get('keyword_suggestions'):
-                            st.subheader("🏷️ Keyword Suggestions")
-                            cols = st.columns(3)
-                            for i, keyword in enumerate(suggestions['keyword_suggestions']):
-                                with cols[i % 3]:
-                                    st.success(keyword)
-                        
-                        # Display priority changes
-                        if suggestions.get('priority_changes'):
-                            st.subheader("🎯 Priority Changes")
-                            for change in suggestions['priority_changes']:
-                                priority = change.get('priority', 'medium')
-                                if priority == 'high':
-                                    st.error(f"🔴 HIGH: {change.get('change', '')}")
-                                elif priority == 'medium':
-                                    st.warning(f"🟡 MEDIUM: {change.get('change', '')}")
-                                else:
-                                    st.info(f"🟢 LOW: {change.get('change', '')}")
-                        
-                        # Overall assessment
-                        if suggestions.get('overall_assessment'):
-                            st.subheader("📊 Overall Assessment")
-                            st.markdown(suggestions['overall_assessment'])
-                    else:
-                        st.error(f"❌ Analysis failed: {result.get('error', 'Unknown error')}")
+            st.info("💡 Fill out the target inputs to run the customizer.")
 
     def customize_resume_for_job(self, resume_id: str, job_id: str):
         """Customize resume for specific job"""
@@ -2293,16 +1628,14 @@ Generated: {result.get('generated_at', 'Unknown')}
     # add_job_form removed in favor of sidebar_add_job
 
     def display_jobs_table(self):
-        """Display jobs in a clean table format"""
+        """Display jobs as clean readable cards with inline actions."""
         try:
             jobs = get_stored_jobs()
-            
+
             if not jobs:
-                st.info("📝 No jobs stored yet. Add your first job using the form above!")
-                
-                # Quick action buttons
-                col1, col2, col3 = st.columns(3)
-                with col2:
+                st.info("📝 No jobs stored yet. Add your first job using the sidebar.")
+                _, mid, _ = st.columns(3)
+                with mid:
                     if st.button("📊 Load Sample Jobs", use_container_width=True):
                         with st.spinner("Loading sample jobs..."):
                             try:
@@ -2313,137 +1646,116 @@ Generated: {result.get('generated_at', 'Unknown')}
                             except Exception as e:
                                 st.error(f"Failed to load sample jobs: {e}")
                 return
-            
-            # Summary metrics
-            st.subheader(f"📊 Jobs Overview ({len(jobs)} total)")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                avg_experience = sum(job.get('experience_years', 0) for job in jobs) / len(jobs)
-                st.metric("Avg Experience", f"{avg_experience:.1f} yrs")
-            
-            with col2:
-                companies = set(job.get('company', '') for job in jobs if job.get('company'))
-                st.metric("Companies", len(companies))
-            
-            with col3:
-                total_skills = sum(len(job.get('required_skills', [])) for job in jobs)
-                st.metric("Total Skills", total_skills)
-            
-            with col4:
-                locations = set(job.get('location') for job in jobs if job.get('location'))
-                st.metric("Locations", len(locations))
-            
-            # Enhanced Jobs Display
-            st.subheader("� Available Positions")
-            
-            # Display jobs as cards for better visual appeal
+
+            # ── Summary bar ──
+            avg_exp = sum(j.get('experience_years', 0) for j in jobs) / len(jobs)
+            companies = {j.get('company', '') for j in jobs if j.get('company')}
+            total_skills = sum(len(j.get('required_skills', [])) for j in jobs)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Total Jobs", len(jobs))
+            c2.metric("Companies", len(companies))
+            c3.metric("Avg Exp. Required", f"{avg_exp:.1f} yrs")
+            c4.metric("Skills Indexed", total_skills)
+
+            st.markdown("---")
+            st.markdown("### 📋 Available Positions")
+
             for i, job in enumerate(jobs):
-                with st.container():
-                    # Create a card-like display
-                    col1, col2, col3 = st.columns([3, 2, 1])
-                    
-                    with col1:
-                        # Prominent job title and company
-                        company_name = job.get('company', 'Company Not Specified')
-                        if company_name and company_name.strip():
-                            st.markdown(f"### 🏢 **{job.get('title', 'Position')}** at **{company_name}**")
-                        else:
-                            st.markdown(f"### 📋 **{job.get('title', 'Position')}**")
-                        
-                        # Location and experience
-                        location = job.get('location', 'Location flexible')
-                        experience = job.get('experience_years', 0)
-                        st.markdown(f"📍 {location} • 📈 {experience} years experience")
-                        
-                        # Key skills preview
-                        required_skills = job.get('required_skills', [])
-                        if required_skills:
-                            skills_display = ', '.join(required_skills[:4])
-                            if len(required_skills) > 4:
-                                skills_display += f" +{len(required_skills) - 4} more"
-                            st.markdown(f"🛠️ **Key Skills:** {skills_display}")
-                    
-                    with col2:
-                        # Additional job info
-                        if job.get('education_level'):
-                            st.markdown(f"🎓 **Education:** {job.get('education_level', 'Not specified')[:50]}...")
-                        
-                        # Preferred skills
-                        preferred_skills = job.get('preferred_skills', [])
-                        if preferred_skills:
-                            pref_display = ', '.join(preferred_skills[:3])
-                            if len(preferred_skills) > 3:
-                                pref_display += f" +{len(preferred_skills) - 3} more"
-                            st.markdown(f"⭐ **Preferred:** {pref_display}")
-                    
-                    with col3:
-                        # Action buttons
-                        st.markdown("**Actions:**")
-                        if st.button("🔍 Find Matches", key=f"find_{i}", use_container_width=True):
-                            self.perform_job_matching(job['id'], 10, True)
-                        
-                        if st.button("👁️ Details", key=f"view_{i}", use_container_width=True):
+                job_id  = job.get('id', f'job_{i}')
+                title   = job.get('title', 'Untitled Position')
+                company = job.get('company', '')
+                loc     = job.get('location', '') or 'Location flexible'
+                exp_yrs = job.get('experience_years', 0) or 0
+                added   = (job.get('created_at', '') or '')[:10]
+                edu     = job.get('education_level', '') or ''
+
+                # Robustly coerce skills in case old JSON has dicts
+                def _safe_skills(lst):
+                    out = []
+                    for s in (lst or []):
+                        if isinstance(s, str) and s.strip():
+                            out.append(s.strip())
+                        elif isinstance(s, dict):
+                            v = s.get('skill') or s.get('name') or (list(s.values())[0] if s else '')
+                            if v and str(v).strip():
+                                out.append(str(v).strip())
+                    return out
+
+                skills      = _safe_skills(job.get('required_skills', []))
+                pref_skills = _safe_skills(job.get('preferred_skills', []))
+
+                with st.container(border=True):
+                    # ── Title ──
+                    title_line = f"**{title}**"
+                    if company:
+                        title_line += f" &nbsp;·&nbsp; *{company}*"
+                    st.markdown(f"#### {title_line}")
+
+                    # ── Meta line ──
+                    meta = []
+                    if exp_yrs:
+                        meta.append(f"📈 {exp_yrs} yrs exp.")
+                    meta.append(f"📍 {loc}")
+                    if added:
+                        meta.append(f"📅 {added}")
+                    st.caption("&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta))
+
+                    # ── Required skills ──
+                    if skills:
+                        shown = skills[:6]
+                        tags  = " ".join(f"`{s}`" for s in shown)
+                        if len(skills) > 6:
+                            tags += f" *+{len(skills)-6} more*"
+                        st.markdown(f"🛠️ **Required:** {tags}")
+
+                    # ── Preferred skills ──
+                    if pref_skills:
+                        shown_p = pref_skills[:4]
+                        tags_p  = " ".join(f"`{s}`" for s in shown_p)
+                        if len(pref_skills) > 4:
+                            tags_p += f" *+{len(pref_skills)-4} more*"
+                        st.markdown(f"⭐ **Preferred:** {tags_p}")
+
+                    # ── Education ──
+                    if edu and edu.lower() not in ('not specified', ''):
+                        st.caption(f"🎓 {edu}")
+
+                    # ── Action buttons ──
+                    b1, b2, b3, _ = st.columns([1.2, 1.2, 1.2, 4])
+                    with b1:
+                        if st.button("🔍 Match", key=f"find_{i}_{job_id}", use_container_width=True):
+                            self.perform_job_matching(job_id, 10, True)
+                    with b2:
+                        if st.button("👁 Details", key=f"view_{i}_{job_id}", use_container_width=True):
                             self.show_job_details(job)
-                    
-                    st.divider()
-            
-            # Quick stats table for overview
-            st.subheader("📊 Quick Overview")
-            jobs_data = []
-            for job in jobs:
-                jobs_data.append({
-                    "🏢 Company": job.get('company', 'Not specified') or 'Not specified',
-                    "📋 Role": job.get('title', 'N/A'),
-                    "📍 Location": job.get('location', 'Flexible') or 'Flexible',
-                    "📈 Experience": f"{job.get('experience_years', 0)} yrs",
-                    "🛠️ Skills Count": len(job.get('required_skills', [])),
-                    "📅 Added": job.get('created_at', '')[:10] if job.get('created_at') else 'N/A'
-                })
-            
-            jobs_df = pd.DataFrame(jobs_data)
-            st.dataframe(jobs_df, use_container_width=True, hide_index=True)
-            
-            # Job selection for actions
-            st.divider()
-            st.subheader("🎯 Job Actions")
-            
-            job_options = {f"{job['title']} - {job['company']}": job for job in jobs}
-            selected_job_name = st.selectbox(
-                "Select a job for actions:",
-                options=list(job_options.keys()),
-                help="Choose a job to perform actions on"
-            )
-            
-            if selected_job_name:
-                selected_job = job_options[selected_job_name]
-                
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    if st.button("🔍 Find Candidates", use_container_width=True):
-                        self.perform_job_matching(selected_job['id'], 10, True)
-                
-                with col2:
-                    if st.button("👁️ View Details", use_container_width=True):
-                        self.show_job_details(selected_job)
-                
-                with col3:
-                    if st.button("✏️ Edit Job", use_container_width=True):
-                        st.info("🚧 Edit functionality coming soon!")
-                
-                with col4:
-                    if st.button("🗑️ Delete Job", use_container_width=True, type="secondary"):
-                        if st.session_state.get('confirm_delete'):
-                            # Delete confirmation logic would go here
-                            st.warning("Delete confirmation would be implemented here")
-                        else:
-                            st.session_state.confirm_delete = True
-                            st.warning("Click again to confirm deletion")
-                
+                    with b3:
+                        del_key = f"confirm_delete_{job_id}"
+                        if st.button("🗑 Delete", key=f"del_{i}_{job_id}", use_container_width=True):
+                            st.session_state[del_key] = True
+
+                    # ── Delete confirmation ──
+                    if st.session_state.get(f"confirm_delete_{job_id}"):
+                        st.warning(f"⚠️ Permanently delete **{title}**? This cannot be undone.")
+                        yes_c, no_c, _ = st.columns([1, 1, 4])
+                        with yes_c:
+                            if st.button("✅ Confirm", key=f"yes_{job_id}", type="primary"):
+                                ok = asyncio.run(self.job_processor.delete_job(job_id))
+                                if ok:
+                                    st.success(f"Deleted: {title}")
+                                    st.session_state.pop(f"confirm_delete_{job_id}", None)
+                                    st.cache_data.clear()
+                                    st.rerun()
+                                else:
+                                    st.error("Delete failed — check logs.")
+                        with no_c:
+                            if st.button("❌ Cancel", key=f"no_{job_id}"):
+                                st.session_state.pop(f"confirm_delete_{job_id}", None)
+                                st.rerun()
+
         except Exception as e:
             st.error(f"Error loading jobs: {str(e)}")
             logger.error(f"Jobs display error: {str(e)}")
+
 
     def show_job_details(self, job):
         """Show detailed job information"""

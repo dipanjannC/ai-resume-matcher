@@ -4,6 +4,7 @@ Job Processor Service - Handles job description storage and retrieval
 
 import uuid
 import json
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -37,6 +38,31 @@ class JobProcessor:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         
         logger.info("JobProcessor initialized successfully")
+
+    @staticmethod
+    def _compute_hash(text: str) -> str:
+        """Compute a SHA-256 hash for deduplication. Strips whitespace before hashing."""
+        return hashlib.sha256(text.strip().encode()).hexdigest()
+
+    async def find_job_by_hash(self, content_hash: str) -> Optional[JobDescription]:
+        """Find an existing job by its content hash. Returns None if not found."""
+        # Check in-memory cache first
+        for job in self.stored_jobs.values():
+            if job.content_hash == content_hash:
+                return job
+
+        # Scan persisted JSON files
+        for job_file in self.jobs_dir.glob("*.json"):
+            try:
+                with open(job_file, "r") as f:
+                    data = json.load(f)
+                if data.get("content_hash") == content_hash:
+                    job = JobDescription.from_dict(data)
+                    self.stored_jobs[job.id] = job
+                    return job
+            except Exception:
+                continue
+        return None
     
     async def process_and_store_job(
         self,
@@ -61,7 +87,17 @@ class JobProcessor:
         """
         try:
             logger.info(f"Processing job description: {title}")
-            
+
+            # --- Deduplication check ---
+            source_url = kwargs.get("source_url", "") if hasattr(kwargs, "get") else ""
+            hash_source = source_url.strip() if source_url else job_text
+            content_hash = self._compute_hash(hash_source)
+
+            existing = await self.find_job_by_hash(content_hash)
+            if existing:
+                logger.info(f"Duplicate job detected (hash={content_hash[:8]}…). Returning existing: {existing.id}")
+                return existing
+
             # Parse with LangChain agents
             job_data = await langchain_agents.parse_job_description(job_text)
             
@@ -76,20 +112,26 @@ class JobProcessor:
                 job_data.location = location
             
             job_data.raw_text = job_text
-            
+            job_data.source_url = source_url
+            job_data.content_hash = content_hash
+
             # Generate embedding
             embedding = self.embedding_service.generate_embedding(job_text)
             job_data.embedding = embedding
             
             # Store in vector database with proper metadata types
+            coerced_skills = ", ".join(
+                langchain_agents._coerce_to_str_list(job_data.required_skills)
+            ) if job_data.required_skills else ""
             metadata = {
                 "job_id": job_data.id,
                 "title": job_data.title,
                 "company": job_data.company,
                 "experience_years": job_data.experience_years,
                 "location": job_data.location,
-                "required_skills": ", ".join(job_data.required_skills) if job_data.required_skills else "",
+                "required_skills": coerced_skills,
                 "skills_count": len(job_data.required_skills) if job_data.required_skills else 0,
+                "content_hash": job_data.content_hash,
                 "created_at": job_data.created_at.isoformat()
             }
             

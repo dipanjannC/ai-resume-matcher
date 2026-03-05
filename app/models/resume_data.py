@@ -118,6 +118,10 @@ class JobDescription:
     education_level: str = ""
     responsibilities: List[str] = field(default_factory=list)
     
+    # Source tracking & deduplication
+    source_url: str = ""
+    content_hash: str = ""  # SHA-256 of source_url or raw_text
+    
     # Vector data
     embedding: Optional[List[float]] = None
     
@@ -137,6 +141,8 @@ class JobDescription:
             "experience_years": self.experience_years,
             "education_level": self.education_level,
             "responsibilities": self.responsibilities,
+            "source_url": self.source_url,
+            "content_hash": self.content_hash,
             "has_embedding": self.embedding is not None
         }
     
@@ -161,6 +167,8 @@ class JobDescription:
             experience_years=data.get("experience_years", 0),
             education_level=data.get("education_level", ""),
             responsibilities=data.get("responsibilities", []),
+            source_url=data.get("source_url", ""),
+            content_hash=data.get("content_hash", ""),
             embedding=None  # Embeddings are not stored in JSON
         )
 

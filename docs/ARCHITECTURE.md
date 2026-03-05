@@ -8,29 +8,28 @@ The AI Resume Matcher is a **LangChain-powered resume matching system** built wi
 
 ## Core Architecture
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Streamlit UI  │    │    FastAPI       │    │   CLI Tools     │
-│   (Sidebar Nav) │    │   (Optional)     │    │   (Demos)       │
-└─────────┬───────┘    └─────────┬────────┘    └─────────┬───────┘
-          │                      │                       │
-          └──────────────────────┼───────────────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │   Resume Processor      │
-                    │   (Main Orchestrator)   │
-                    └────────────┬────────────┘
-                                 │
-        ┌────────────────────────┼────────────────────────┐
-        │                        │                        │
-┌───────▼────────┐    ┌──────────▼─────────┐    ┌─────────▼────────┐
-│ LangChain      │    │ Memory Service     │    │ Vector Store     │
-│ Agents         │    │ (Mem0 / Graphiti)  │    │ (ChromaDB)       │
-│ (Multi-LLM)    │    │                    │    │                  │
-│ • Groq         │    │ • User Context     │    │ • Embeddings     │
-│ • Gemini       │    │ • Long-term Memory │    │ • Similarity     │
-│ • OpenAI       │    │                    │    │   Search         │
-└────────────────┘    └────────────────────┘    └──────────────────┘
+```mermaid
+graph TD
+    UI[Streamlit UI<br/>app/streamlit_app.py] --> RP[Resume Processor<br/>Main Orchestrator]
+    API[FastAPI<br/>Optional] --> RP
+    CLI[CLI Tools] --> RP
+
+    subgraph Core Services
+        RP --> LA[LangChain Agents<br/>Multi-LLM]
+        RP --> MS[Memory Service<br/>Context]
+        RP --> VS[Vector Store<br/>ChromaDB]
+        RP --> JS[Job Scraper<br/>BeautifulSoup + LLM]
+        RP --> RC[Resume Customizer<br/>Agentic Workflow]
+        RP --> DG[Document Generator<br/>PDF Export]
+    end
+
+    RC --> DDG[DuckDuckGo Search<br/>Company Web Research]
+    LA --> LLMs[(LLM Providers<br/>Groq/Gemini/OpenAI)]
+    
+    style UI fill:#e1f5fe,stroke:#01579b
+    style RP fill:#fff3e0,stroke:#e65100
+    style RC fill:#e8f5e9,stroke:#1b5e20
+    style DDG fill:#fce4ec,stroke:#880e4f
 ```
 
 ## Key Components

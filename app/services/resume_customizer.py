@@ -40,14 +40,41 @@ class ResumeCustomizerService:
             # Get customization prompt
             prompt = self.prompt_manager.get_resume_customization_prompt()
             
+            # Agentic Component: Research the company online
+            company_research = "No external research conducted."
+            if job_description.company and job_description.company.lower() not in ["n/a", "", "unknown"]:
+                logger.info(f"Agentic Step: Researching '{job_description.company}' to understand culture and values.")
+                try:
+                    from ddgs import DDGS
+                    
+                    query = f"What are the core values, engineering culture, and recent news for {job_description.company}?"
+                    search_results = ""
+                    ddgs = DDGS()
+                    results = list(ddgs.text(query, max_results=3))
+                    for r in results:
+                        search_results += f"- {r.get('title', '')}: {r.get('body', '')}\n"
+                    
+                    if search_results.strip():
+                        company_research = search_results
+                        logger.info("Successfully gathered company research for customization.")
+                    else:
+                        logger.warning("Web search returned no results.")
+                except Exception as search_err:
+                    logger.warning(f"Agentic web search failed: {search_err}")
+
             # Prepare context for LLM
             context = {
                 "original_resume": self._format_resume_for_prompt(resume_data),
                 "job_description": self._format_job_for_prompt(job_description),
                 "job_title": getattr(job_description, 'title', '') or "N/A",
                 "company": getattr(job_description, 'company', '') or "N/A",
-                "required_skills": ", ".join(getattr(job_description, 'required_skills', []) or []),
-                "experience_required": getattr(job_description, 'experience_years', 0) or 0
+                "required_skills": ", ".join(
+                    self.langchain_agents._coerce_to_str_list(
+                        getattr(job_description, 'required_skills', []) or []
+                    )
+                ),
+                "experience_required": getattr(job_description, 'experience_years', 0) or 0,
+                "company_research": company_research
             }
             
             # Generate customized resume using LangChain
@@ -61,7 +88,7 @@ class ResumeCustomizerService:
                     "customized_resume": customized_content,
                     "job_title": job_description.title,
                     "company": job_description.company,
-                    "customization_summary": customized_content.get("customization_summary", "")
+                    "agentic_reasoning": customized_content.get("agentic_reasoning", "No reasoning provided.")
                 }
             else:
                 return {"success": False, "error": "Failed to generate customized resume"}
@@ -103,7 +130,11 @@ class ResumeCustomizerService:
                 "job_title": getattr(job_description, 'title', '') or "",
                 "company": getattr(job_description, 'company', '') or "",
                 "job_requirements": (getattr(job_description, 'raw_text', '') or "")[:1000],
-                "required_skills": ", ".join(getattr(job_description, 'required_skills', []) or []),
+                "required_skills": ", ".join(
+                    self.langchain_agents._coerce_to_str_list(
+                        getattr(job_description, 'required_skills', []) or []
+                    )
+                ),
                 "location": getattr(job_description, 'location', '') or "Remote"
             }
             
@@ -156,7 +187,11 @@ class ResumeCustomizerService:
                 "resume_skills": ", ".join(all_skills) if all_skills else "",
                 "resume_experience": getattr(resume_data.experience, 'total_years', 0) or 0,
                 "resume_summary": getattr(resume_data, 'summary', '') or "",
-                "job_requirements": ", ".join(getattr(job_description, 'required_skills', []) or []),
+                "job_requirements": ", ".join(
+                    self.langchain_agents._coerce_to_str_list(
+                        getattr(job_description, 'required_skills', []) or []
+                    )
+                ),
                 "job_experience_required": getattr(job_description, 'experience_years', 0) or 0,
                 "job_description": (getattr(job_description, 'raw_text', '') or "")[:800]
             }
@@ -187,9 +222,9 @@ class ResumeCustomizerService:
         all_skills = []
         if resume_data.skills:
             if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical:
-                all_skills.extend(resume_data.skills.technical)
+                all_skills.extend(self.langchain_agents._coerce_to_str_list(resume_data.skills.technical))
             if hasattr(resume_data.skills, 'soft') and resume_data.skills.soft:
-                all_skills.extend(resume_data.skills.soft)
+                all_skills.extend(self.langchain_agents._coerce_to_str_list(resume_data.skills.soft))
         
         return f"""
 Name: {getattr(resume_data.profile, 'name', '') or 'N/A'}
@@ -201,9 +236,9 @@ Summary: {getattr(resume_data, 'summary', '') or 'N/A'}
 Experience Years: {getattr(resume_data.experience, 'total_years', 0) or 0}
 
 Skills: {', '.join(all_skills) if all_skills else 'N/A'}
-Technical Skills: {', '.join(getattr(resume_data.skills, 'technical', []) or []) if hasattr(resume_data.skills, 'technical') else 'N/A'}
-Soft Skills: {', '.join(getattr(resume_data.skills, 'soft', []) or []) if hasattr(resume_data.skills, 'soft') else 'N/A'}
-Certifications: {', '.join(getattr(resume_data.skills, 'certifications', []) or []) if hasattr(resume_data.skills, 'certifications') else 'N/A'}
+Technical Skills: {', '.join(self.langchain_agents._coerce_to_str_list(getattr(resume_data.skills, 'technical', []) or [])) if hasattr(resume_data.skills, 'technical') else 'N/A'}
+Soft Skills: {', '.join(self.langchain_agents._coerce_to_str_list(getattr(resume_data.skills, 'soft', []) or [])) if hasattr(resume_data.skills, 'soft') else 'N/A'}
+Certifications: {', '.join(self.langchain_agents._coerce_to_str_list(getattr(resume_data.skills, 'certifications', []) or [])) if hasattr(resume_data.skills, 'certifications') else 'N/A'}
 
 Work Experience:
 {self._format_experience_for_prompt(resume_data.experience) if resume_data.experience else 'N/A'}
@@ -211,7 +246,7 @@ Work Experience:
 Tools & Technologies:
 {self._format_tools_for_prompt(resume_data.tools_libraries) if resume_data.tools_libraries else 'N/A'}
 
-Key Strengths: {', '.join(getattr(resume_data, 'key_strengths', []) or []) if hasattr(resume_data, 'key_strengths') else 'N/A'}
+Key Strengths: {', '.join(self.langchain_agents._coerce_to_str_list(getattr(resume_data, 'key_strengths', []) or [])) if hasattr(resume_data, 'key_strengths') else 'N/A'}
         """.strip()
     
     def _format_job_for_prompt(self, job_description: JobDescription) -> str:
@@ -221,7 +256,7 @@ Job Title: {getattr(job_description, 'title', '') or 'N/A'}
 Company: {getattr(job_description, 'company', '') or 'N/A'}
 Location: {getattr(job_description, 'location', '') or 'N/A'}
 Experience Required: {getattr(job_description, 'experience_years', 0) or 0} years
-Required Skills: {', '.join(getattr(job_description, 'required_skills', []) or [])}
+Required Skills: {', '.join(self.langchain_agents._coerce_to_str_list(getattr(job_description, 'required_skills', []) or []))}
 Job Summary: {getattr(job_description, 'summary', '') or 'N/A'}
 
 Full Description:
@@ -243,11 +278,11 @@ Full Description:
         # Add roles and companies
         roles = getattr(experience_info, 'roles', []) or []
         if roles:
-            formatted.append(f"Roles: {', '.join(roles)}")
+            formatted.append(f"Roles: {', '.join(self.langchain_agents._coerce_to_str_list(roles))}")
         
         companies = getattr(experience_info, 'companies', []) or []
         if companies:
-            formatted.append(f"Companies: {', '.join(companies)}")
+            formatted.append(f"Companies: {', '.join(self.langchain_agents._coerce_to_str_list(companies))}")
         
         # Add key responsibilities
         responsibilities = getattr(experience_info, 'responsibilities', []) or []
@@ -274,22 +309,22 @@ Full Description:
         
         programming_languages = getattr(tools_libraries, 'programming_languages', []) or []
         if programming_languages:
-            formatted.append(f"Programming Languages: {', '.join(programming_languages)}")
+            formatted.append(f"Programming Languages: {', '.join(self.langchain_agents._coerce_to_str_list(programming_languages))}")
         
         frameworks = getattr(tools_libraries, 'frameworks', []) or []
         if frameworks:
-            formatted.append(f"Frameworks: {', '.join(frameworks)}")
+            formatted.append(f"Frameworks: {', '.join(self.langchain_agents._coerce_to_str_list(frameworks))}")
         
         tools = getattr(tools_libraries, 'tools', []) or []
         if tools:
-            formatted.append(f"Tools: {', '.join(tools)}")
+            formatted.append(f"Tools: {', '.join(self.langchain_agents._coerce_to_str_list(tools))}")
         
         databases = getattr(tools_libraries, 'databases', []) or []
         if databases:
-            formatted.append(f"Databases: {', '.join(databases)}")
+            formatted.append(f"Databases: {', '.join(self.langchain_agents._coerce_to_str_list(databases))}")
         
         if hasattr(tools_libraries, 'cloud_platforms') and tools_libraries.cloud_platforms:
-            formatted.append(f"Cloud Platforms: {', '.join(tools_libraries.cloud_platforms)}")
+            formatted.append(f"Cloud Platforms: {', '.join(self.langchain_agents._coerce_to_str_list(tools_libraries.cloud_platforms))}")
         
         return "\n".join(formatted) if formatted else "No tools/technologies available"
 

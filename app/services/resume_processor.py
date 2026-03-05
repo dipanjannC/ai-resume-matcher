@@ -87,7 +87,7 @@ class ResumeProcessor:
             metadata = {
                 "candidate_id": resume_data.id,
                 "filename": resume_data.filename,
-                "skills": ", ".join(resume_data.skills.technical) if resume_data.skills.technical else "",
+                "skills": ", ".join(langchain_agents._coerce_to_str_list(resume_data.skills.technical)) if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical else "",
                 "skills_count": len(resume_data.skills.technical) if resume_data.skills.technical else 0,
                 "experience_years": resume_data.experience.total_years,
                 "processed_at": resume_data.processed_at.isoformat()
@@ -162,7 +162,7 @@ class ResumeProcessor:
                     metadata = {
                         "candidate_id": resume_data.id,
                         "filename": filename,
-                        "skills": ", ".join(resume_data.skills.technical) if resume_data.skills.technical else "",
+                        "skills": ", ".join(langchain_agents._coerce_to_str_list(resume_data.skills.technical)) if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical else "",
                         "skills_count": len(resume_data.skills.technical) if resume_data.skills.technical else 0,
                         "experience_years": resume_data.experience.total_years,
                         "processed_at": resume_data.processed_at.isoformat()

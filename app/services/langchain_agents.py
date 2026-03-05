@@ -112,7 +112,61 @@ class LangChainAgents:
         logger.error(error_msg)
         raise ResumeMatcherException(error_msg)
 
-    
+    @staticmethod
+    def _coerce_to_str_list(lst) -> list:
+        """
+        Safely convert any list returned by an LLM to a clean List[str].
+
+        Handles common LLM output deviations:
+        - {"skill": "Python"}, {"name": "Java"}, {"technology": "..."} → string value
+        - None values → dropped
+        - integers/floats → str cast
+        - nested lists → flattened one level
+        - empty strings → dropped
+
+        Args:
+            lst: Any value, ideally a list.
+
+        Returns:
+            A clean list of non-empty strings.
+        """
+        if not lst:
+            return []
+
+        result = []
+        items = lst if isinstance(lst, list) else [lst]
+
+        for item in items:
+            if item is None:
+                continue
+            elif isinstance(item, str):
+                if item.strip():
+                    result.append(item.strip())
+            elif isinstance(item, dict):
+                # LLM sometimes returns {"skill": "Python"} or {"name": "ML", "level": "senior"}
+                # Pick the first non-empty string value
+                for key in ("skill", "name", "technology", "tool", "language", "value"):
+                    v = item.get(key, "")
+                    if isinstance(v, str) and v.strip():
+                        result.append(v.strip())
+                        break
+                else:
+                    # Fallback: use the first string value found in the dict
+                    for v in item.values():
+                        if isinstance(v, str) and v.strip():
+                            result.append(v.strip())
+                            break
+            elif isinstance(item, list):
+                # Flatten one level
+                result.extend(LangChainAgents._coerce_to_str_list(item))
+            else:
+                # int, float, bool etc.
+                s = str(item).strip()
+                if s:
+                    result.append(s)
+
+        return result
+
     def _clean_json_response(self, response_text: str) -> str:
         """
         Clean LLM response to extract valid JSON and handle null values.
@@ -435,16 +489,16 @@ class LangChainAgents:
                 logger.error(f"Raw output was: {raw_response.content}")
                 raise ResumeMatcherException("Failed to parse job description from AI response. Please try again.")
             
-            # Convert to JobDescription object
+            # Convert to JobDescription object — coerce any dict/None/int items to str
             job_data = JobDescription(
                 title=result.title,
                 company=result.company,
                 raw_text=job_text,
-                required_skills=result.required_skills,
-                preferred_skills=result.preferred_skills,
+                required_skills=self._coerce_to_str_list(result.required_skills),
+                preferred_skills=self._coerce_to_str_list(result.preferred_skills),
                 experience_years=result.experience_years,
                 education_level=result.education_level,
-                responsibilities=result.responsibilities
+                responsibilities=self._coerce_to_str_list(result.responsibilities)
             )
             
             logger.info("Job description parsing completed successfully")
@@ -551,8 +605,8 @@ class LangChainAgents:
                 {
                     "profile": f"{resume_data.profile.name} - {resume_data.profile.title}",
                     "experience_years": resume_data.experience.total_years,
-                    "key_skills": ", ".join(resume_data.skills.technical[:5]),
-                    "strengths": ", ".join(resume_data.key_strengths)
+                    "key_skills": ", ".join(self._coerce_to_str_list(resume_data.skills.technical[:5]) if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical else []),
+                    "strengths": ", ".join(self._coerce_to_str_list(getattr(resume_data, 'key_strengths', []) or []))
                 }
             )
             
@@ -605,14 +659,15 @@ class LangChainAgents:
         try:
             logger.info("Generating cover letter using LangChain agents")
             
-            # Create chain
-            chain = prompt | self.llm
-            
-            # Invoke chain with context
-            result = await chain.ainvoke(context)
+            # Execute with fallback across all LLM providers
+            raw_response = await self._execute_with_fallback(
+                "Cover Letter Generation",
+                prompt,
+                context
+            )
             
             # Extract cover letter text
-            cover_letter = str(result.content) if hasattr(result, 'content') else str(result)
+            cover_letter = str(raw_response.content) if hasattr(raw_response, 'content') else str(raw_response)
             
             return cover_letter.strip()
             
@@ -634,14 +689,15 @@ class LangChainAgents:
         try:
             logger.info("Analyzing customization needs using LangChain agents")
             
-            # Create chain
-            chain = prompt | self.llm
-            
-            # Invoke chain with context
-            result = await chain.ainvoke(context)
+            # Execute with fallback across all LLM providers
+            raw_response = await self._execute_with_fallback(
+                "Customization Analysis",
+                prompt,
+                context
+            )
             
             # Parse JSON response
-            response_text = str(result.content) if hasattr(result, 'content') else str(result)
+            response_text = str(raw_response.content) if hasattr(raw_response, 'content') else str(raw_response)
             
             # Clean and parse JSON
             cleaned_response = self._clean_json_response(response_text)

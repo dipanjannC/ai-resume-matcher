@@ -5,9 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.14.3",
     "chromadb>=1.3.5",
     "click>=8.3.1",
+    "duckduckgo-search>=8.1.1",
     "fastapi>=0.123.8",
+    "fpdf>=1.7.2",
     "google-generativeai>=0.8.5",
     "graphiti-core>=0.24.1",
     "httpx>=0.28.1",
@@ -39,5 +42,4 @@ dependencies = [
     "urllib3>=2.5.0",
     "uvicorn[standard]>=0.38.0",
 ]
-[tool.setuptools]
-packages = ["app"]
+

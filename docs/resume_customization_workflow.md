@@ -60,8 +60,9 @@ sequenceDiagram
     participant User
     participant Parser as Parsing Service
     participant Matcher as Semantic Matcher
+    participant Agent as DDG Web Agent
     participant AI as Generative LLM
-    participant ATS as ATS Validator
+    participant ATS as Docs Generator
     
     User->>Parser: Submit Resume & JD Link
     
@@ -74,28 +75,31 @@ sequenceDiagram
     Parser->>Matcher: Send Structured Data
     
     rect rgb(255, 250, 240)
-        Note over Matcher: Phase 2: Analysis
+        Note over Matcher: Phase 2: Analysis & Web Research
         Matcher->>Matcher: Vector Search (ChromaDB)
+        Matcher->>Agent: Query Target Company
+        Agent-->>Matcher: Return Company Culture, Values, News
         Matcher->>Matcher: Identify Skill Gaps & Alignments
     end
     
-    Matcher->>AI: Send Strategy & Resume Content
+    Matcher->>AI: Send Strategy, Company Context, & Resume
     
     rect rgb(240, 255, 240)
-        Note over AI: Phase 3: Customization
-        AI->>AI: Rephrase Experience & Summary
-        AI->>AI: Highlight Relevant Tools
+        Note over AI: Phase 3: Agentic Customization
+        AI->>AI: Generate Agentic Reasoning Trace
+        AI->>AI: Rephrase Experience & Summary for Culture Fit
+        AI->>AI: Highlight Relevant Tools & JD Context
     end
     
-    AI->>ATS: Send Draft Resume
+    AI->>ATS: Send Draft Resume & Cover Letter
     
     rect rgb(255, 240, 245)
-        Note over ATS: Phase 4: Validation
-        ATS->>ATS: Validate ATS Best Practices
-        ATS->>ATS: Check Keyword Density (No 'Noise')
+        Note over ATS: Phase 4: Document Generation
+        ATS->>ATS: Generate PDF with fpdf
+        ATS->>ATS: Format clean text for copy/paste
     end
     
-    ATS-->>User: Return Professionally Customized Resume
+    ATS-->>User: Return Professionally Customized PDF & Reasoning
 ```
 
 ## ATS Best Practices Adherence

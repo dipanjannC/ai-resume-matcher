@@ -35,7 +35,7 @@ async def test_customize_resume_formatting(customizer, mock_resume_data, mock_jo
             "summary": "Tailored summary for TechCorp",
             "experience": []
         },
-        "customization_summary": "Added TechCorp keywords"
+        "agentic_reasoning": "I added keywords because TechCorp values XYZ."
     }
     
     customizer.langchain_agents.customize_resume_for_job = AsyncMock(return_value=mock_customized_dict)
@@ -45,7 +45,7 @@ async def test_customize_resume_formatting(customizer, mock_resume_data, mock_jo
     assert result["success"] is True
     assert result["job_title"] == "Senior Developer"
     assert result["company"] == "TechCorp"
-    assert "customization_summary" in result
+    assert "agentic_reasoning" in result
     
 @pytest.mark.asyncio
 async def test_customize_resume_failure(customizer, mock_resume_data, mock_job_data):

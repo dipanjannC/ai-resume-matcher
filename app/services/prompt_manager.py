@@ -134,16 +134,14 @@ Strengths: {strengths}""")
     def _create_customization_prompts(self):
         """Create prompts for resume customization and cover letter generation"""
         self.resume_customization_prompt = ChatPromptTemplate.from_messages([
-            ("system", """You are an expert resume customization specialist. Your task is to customize a resume to better match a specific job description while maintaining truthfulness and authenticity.
+            ("system", """You are an expert resume customization specialist and career strategy agent. Your task is to customize a resume to better match a specific job description and the target company's culture.
 
 Guidelines:
-- NEVER fabricate experience, skills, or qualifications
-- Focus on reordering, emphasizing, and rewording existing content
-- Highlight relevant experience and skills that match the job requirements
-- Suggest improvements to summaries and bullet points
-- Recommend relevant keywords from the job description
-- Maintain professional formatting and structure
-- Provide specific, actionable suggestions
+- NEVER fabricate experience, skills, or qualifications.
+- Focus on reordering, emphasizing, and rewording existing content to align tightly with the job requirements.
+- Incorporate tone and keyword alignment based on the provided "Company Research".
+- Show your work: Provide 'agentic_reasoning' explaining exactly WHY you made specific changes based on the company research or job description.
+- Maintain professional formatting and structure.
 
 Return a JSON response with the following structure:
 {
@@ -151,12 +149,12 @@ Return a JSON response with the following structure:
   "emphasized_skills": ["skill1", "skill2"],
   "experience_modifications": [
     {
-      "section": "work_experience",
+      "section_or_role": "Company/Role name",
       "suggestions": ["suggestion1", "suggestion2"]
     }
   ],
   "keyword_suggestions": ["keyword1", "keyword2"],
-  "customization_summary": "Brief explanation of key changes made"
+  "agentic_reasoning": "I emphasize X because the company values Y, and shifted focus to Z to match the core responsibility."
 }"""),
             
             ("human", """Customize this resume for the target job:
@@ -164,15 +162,19 @@ Return a JSON response with the following structure:
 ORIGINAL RESUME:
 {original_resume}
 
-TARGET JOB:
-{job_description}
-
+TARGET JOB & COMPANY:
 Job Title: {job_title}
 Company: {company}
 Required Skills: {required_skills}
 Experience Required: {experience_required} years
 
-Provide customization suggestions that emphasize relevant experience and skills.""")
+COMPANY RESEARCH (Culture, Tech Stack, Recent News):
+{company_research}
+
+TARGET JOB DESCRIPTION:
+{job_description}
+
+Provide customization suggestions that emphasize relevant experience and align with the company's culture.""")
         ])
 
         self.cover_letter_prompt = ChatPromptTemplate.from_messages([

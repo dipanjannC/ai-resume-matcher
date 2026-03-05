@@ -24,7 +24,7 @@ class LLMService:
             if not groq_api_key:
                 raise ValueError("GROQ_API_KEY not found in environment variables")
         
-            model = model_name or "gemma2-9b-it"
+            model = model_name or "llama-3.1-8b-instant"
             
             # Set environment variable for langchain-groq to pick up
             os.environ["GROQ_API_KEY"] = groq_api_key
