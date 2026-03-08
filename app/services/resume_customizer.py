@@ -118,9 +118,9 @@ class ResumeCustomizerService:
             all_skills = []
             if resume_data.skills:
                 if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical:
-                    all_skills.extend(resume_data.skills.technical)
+                    all_skills.extend(self.langchain_agents._coerce_to_str_list(resume_data.skills.technical))
                 if hasattr(resume_data.skills, 'soft') and resume_data.skills.soft:
-                    all_skills.extend(resume_data.skills.soft)
+                    all_skills.extend(self.langchain_agents._coerce_to_str_list(resume_data.skills.soft))
             
             context = {
                 "candidate_name": getattr(resume_data.profile, 'name', '') or "Dear Hiring Manager",
@@ -179,9 +179,9 @@ class ResumeCustomizerService:
             all_skills = []
             if resume_data.skills:
                 if hasattr(resume_data.skills, 'technical') and resume_data.skills.technical:
-                    all_skills.extend(resume_data.skills.technical)
+                    all_skills.extend(self.langchain_agents._coerce_to_str_list(resume_data.skills.technical))
                 if hasattr(resume_data.skills, 'soft') and resume_data.skills.soft:
-                    all_skills.extend(resume_data.skills.soft)
+                    all_skills.extend(self.langchain_agents._coerce_to_str_list(resume_data.skills.soft))
             
             context = {
                 "resume_skills": ", ".join(all_skills) if all_skills else "",

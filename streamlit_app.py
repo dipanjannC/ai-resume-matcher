@@ -1145,16 +1145,17 @@ class StreamlitApp:
                     with col_res:
                         st.markdown("#### 📄 Customized Resume Changes")
                         st.markdown("**New Profile Summary:**")
-                        st.write(custom_data.get('customized_summary', 'N/A'))
+                        st.info(custom_data.get('customized_summary', 'N/A'))
                         
-                        st.markdown("**Emphasized Skills:**")
-                        st.write(" • ".join(custom_data.get('emphasized_skills', [])))
+                        st.markdown("**Emphasized Skills (Copy & Paste):**")
+                        skills_text = ", ".join(custom_data.get('emphasized_skills', []))
+                        st.code(skills_text, language="markdown")
                         
-                        with st.expander("Experience Modifications", expanded=False):
-                            for mod in custom_data.get('experience_modifications', []):
-                                st.markdown(f"**{mod.get('section_or_role', 'Experience')}**")
-                                for sug in mod.get('suggestions', []):
-                                    st.write(f"- {sug}")
+                        st.markdown("**Experience Modifications:**")
+                        for mod in custom_data.get('experience_modifications', []):
+                            st.markdown(f"*{mod.get('section_or_role', 'Experience')}*")
+                            suggestions_text = "\n".join([f"- {s}" for s in mod.get('suggestions', [])])
+                            st.code(suggestions_text, language="markdown")
                                     
                         # PDF Export
                         try:
